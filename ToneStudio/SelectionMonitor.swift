@@ -160,8 +160,14 @@ final class SelectionMonitor {
             return
         }
 
-        let bounds = getSelectionBounds(from: focused) ?? mousePositionRect()
-        let appKitRect = axRectToAppKit(bounds)
+        let appKitRect: CGRect
+        if let axBounds = getSelectionBounds(from: focused),
+           axBounds.width > 0, axBounds.height > 0 {
+            appKitRect = axRectToAppKit(axBounds)
+        } else {
+            let mousePos = NSEvent.mouseLocation
+            appKitRect = CGRect(x: mousePos.x, y: mousePos.y, width: 1, height: 14)
+        }
 
         callback?(SelectionResult(text: text, screenRect: appKitRect))
     }
@@ -246,17 +252,10 @@ final class SelectionMonitor {
     // MARK: - Coordinate conversion (AX top-left origin -> AppKit bottom-left origin)
 
     private func axRectToAppKit(_ axRect: CGRect) -> CGRect {
-        let screenHeight: CGFloat
-        if let screen = NSScreen.screens.first(where: {
-            $0.frame.contains(CGPoint(x: axRect.midX, y: $0.frame.maxY - axRect.midY))
-        }) {
-            screenHeight = screen.frame.height
-        } else {
-            screenHeight = NSScreen.main?.frame.height ?? 900
-        }
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 900
         return CGRect(
             x: axRect.origin.x,
-            y: screenHeight - axRect.origin.y - axRect.height,
+            y: primaryHeight - axRect.origin.y - axRect.height,
             width: axRect.width,
             height: axRect.height
         )

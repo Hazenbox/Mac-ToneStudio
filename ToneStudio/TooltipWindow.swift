@@ -197,18 +197,24 @@ final class TooltipWindow {
         updateUI(.collapsed)
 
         let panelSize = panel.frame.size
+
+        let selectionCenter = NSPoint(x: selectionRect.midX, y: selectionRect.midY)
+        let screen = NSScreen.screens.first { $0.frame.contains(selectionCenter) } ?? NSScreen.main!
+        let visibleFrame = screen.visibleFrame
+
         var origin = CGPoint(
             x: selectionRect.midX - panelSize.width / 2,
-            y: selectionRect.minY - panelSize.height - 4
+            y: selectionRect.minY - panelSize.height - 6
         )
-
-        let screen = NSScreen.screens.first { $0.visibleFrame.contains(origin) } ?? NSScreen.main!
-        let visibleFrame = screen.visibleFrame
 
         origin.x = max(visibleFrame.minX + 4, min(origin.x, visibleFrame.maxX - panelSize.width - 4))
 
         if origin.y < visibleFrame.minY {
-            origin.y = selectionRect.maxY + 4
+            origin.y = selectionRect.maxY + 6
+        }
+
+        if origin.y + panelSize.height > visibleFrame.maxY {
+            origin.y = visibleFrame.maxY - panelSize.height - 4
         }
 
         panel.setFrameOrigin(origin)
@@ -217,7 +223,7 @@ final class TooltipWindow {
         panel.animator().alphaValue = 1
 
         addEventMonitors()
-        Logger.tooltip.info("Tooltip shown at (\(origin.x), \(origin.y))")
+        Logger.tooltip.info("Tooltip shown at (\(origin.x), \(origin.y)) for selection at (\(selectionRect.origin.x), \(selectionRect.origin.y), \(selectionRect.width), \(selectionRect.height))")
     }
 
     func hide() {

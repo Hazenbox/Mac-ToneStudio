@@ -160,16 +160,10 @@ final class SelectionMonitor {
             return
         }
 
-        let appKitRect: CGRect
-        if let axBounds = getSelectionBounds(from: focused),
-           axBounds.width > 0, axBounds.height > 0 {
-            appKitRect = axRectToAppKit(axBounds)
-        } else {
-            let mousePos = NSEvent.mouseLocation
-            appKitRect = CGRect(x: mousePos.x, y: mousePos.y, width: 1, height: 14)
-        }
+        let mousePos = NSEvent.mouseLocation
+        let selectionRect = CGRect(x: mousePos.x, y: mousePos.y, width: 1, height: 1)
 
-        callback?(SelectionResult(text: text, screenRect: appKitRect))
+        callback?(SelectionResult(text: text, screenRect: selectionRect))
     }
 
     // MARK: - Secure field check

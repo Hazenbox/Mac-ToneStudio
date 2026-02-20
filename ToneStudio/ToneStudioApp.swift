@@ -1,17 +1,14 @@
-//
-//  ToneStudioApp.swift
-//  ToneStudio
-//
-//  Created by Upen on 20/02/26.
-//
-
 import SwiftUI
 
 @main
 struct ToneStudioApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        MenuBarExtra("Tone Studio", systemImage: "text.bubble") {
+            MenuBarView()
+                .environmentObject(appDelegate.permissionsManager)
         }
+        .menuBarExtraStyle(.window)
     }
 }

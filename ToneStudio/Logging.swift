@@ -1,0 +1,11 @@
+import OSLog
+
+nonisolated extension Logger {
+    private static let subsystem = Bundle.main.bundleIdentifier ?? "com.upen.ToneStudio"
+
+    static let permissions = Logger(subsystem: subsystem, category: "permissions")
+    static let selection = Logger(subsystem: subsystem, category: "selection")
+    static let tooltip = Logger(subsystem: subsystem, category: "tooltip")
+    static let rewrite = Logger(subsystem: subsystem, category: "rewrite")
+    static let accessibility = Logger(subsystem: subsystem, category: "accessibility")
+}

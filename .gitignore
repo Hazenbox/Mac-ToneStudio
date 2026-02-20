@@ -1,0 +1,36 @@
+# Xcode build artifacts
+build/
+DerivedData/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Xcode user-specific files
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.moved-aside
+
+# macOS system files
+.DS_Store
+*.swp
+*~.nib
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+
+# CocoaPods / Carthage (if used later)
+Pods/
+Carthage/
+
+# App secrets — NEVER commit
+*.secrets
+.env
+.env.*

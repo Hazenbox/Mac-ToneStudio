@@ -238,8 +238,13 @@ final class TooltipWindow {
         panel.isVisible
     }
 
-    var windowNumber: Int {
-        panel.windowNumber
+    var isInteracting: Bool {
+        switch currentState {
+        case .loading, .result, .error:
+            return true
+        case .collapsed:
+            return false
+        }
     }
 
     // MARK: - Panel resizing

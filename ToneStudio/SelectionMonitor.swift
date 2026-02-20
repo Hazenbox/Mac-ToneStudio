@@ -18,8 +18,6 @@ final class SelectionMonitor {
     private var pendingWork: DispatchWorkItem?
     private var lastMousePosition: CGPoint = .zero
 
-    var excludedWindowNumber: Int?
-
     func start(callback: @escaping SelectionCallback) {
         self.callback = callback
         startEventTap()
@@ -129,15 +127,6 @@ final class SelectionMonitor {
     // MARK: - Debounce
 
     private func handleMouseUp(mousePosition: CGPoint) {
-        if let windowNum = excludedWindowNumber,
-           let window = NSApp.window(withWindowNumber: windowNum) {
-            let screenHeight = NSScreen.screens.first?.frame.height ?? 0
-            let appKitY = screenHeight - mousePosition.y
-            if window.frame.contains(NSPoint(x: mousePosition.x, y: appKitY)) {
-                return
-            }
-        }
-
         lastMousePosition = mousePosition
         pendingWork?.cancel()
 

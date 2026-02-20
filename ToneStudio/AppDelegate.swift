@@ -43,7 +43,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Start monitoring
 
     private func startMonitoring() {
-        selectionMonitor.excludedWindowNumber = tooltipWindow.windowNumber
         selectionMonitor.start { [weak self] result in
             guard let self else { return }
             self.handleSelection(result)
@@ -54,6 +53,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Selection handling
 
     private func handleSelection(_ result: SelectionResult) {
+        if tooltipWindow.isVisible && tooltipWindow.isInteracting && result.text == selectedText {
+            return
+        }
+
         currentTask?.cancel()
         currentTask = nil
 

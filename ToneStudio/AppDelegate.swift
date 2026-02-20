@@ -43,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Start monitoring
 
     private func startMonitoring() {
+        selectionMonitor.excludedWindowNumber = tooltipWindow.windowNumber
         selectionMonitor.start { [weak self] result in
             guard let self else { return }
             self.handleSelection(result)

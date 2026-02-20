@@ -238,6 +238,10 @@ final class TooltipWindow {
         panel.isVisible
     }
 
+    var windowNumber: Int {
+        panel.windowNumber
+    }
+
     // MARK: - Panel resizing
 
     private func resizePanel(width: CGFloat, height: CGFloat) {

@@ -214,6 +214,20 @@ final class TooltipWindow {
     private func showAtSelectionStart(selection: SelectionResult, state: TooltipState, size: NSSize) {
         cancelAutoHideTimer()
         
+        // CRITICAL: If we don't have precise bounds (AX API failed for Electron/browser),
+        // fall back to mouse-based positioning to the RIGHT of the cursor
+        guard selection.hasPreciseBounds else {
+            Logger.tooltip.info("Using mouse-based fallback positioning (AX bounds invalid)")
+            let fallbackRect = CGRect(
+                x: selection.fallbackPoint.x,
+                y: selection.fallbackPoint.y,
+                width: 1,
+                height: selection.lineHeight
+            )
+            showInternal(near: fallbackRect, state: state, size: size, offsetRight: true)
+            return
+        }
+        
         let anchorPoint = selection.tooltipAnchorPoint
         let lineHeight = selection.lineHeight
         let selectionBounds = selection.firstLineBounds
@@ -267,7 +281,7 @@ final class TooltipWindow {
         }
         
         addEventMonitors()
-        Logger.tooltip.info("Tooltip shown at (\(origin.x), \(origin.y)) state: \(String(describing: state)), hasPreciseBounds: \(selection.hasPreciseBounds)")
+        Logger.tooltip.info("Tooltip shown at (\(origin.x), \(origin.y)) state: \(String(describing: state)), hasPreciseBounds: true")
     }
     
     /// Calculate position for tooltip to appear at LEFT of selection

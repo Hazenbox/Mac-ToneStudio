@@ -14,8 +14,12 @@ final class AccessibilityManager {
     // MARK: - Get Selection Bounds
     
     /// Gets the screen bounds of the currently selected text using Accessibility API
-    /// Returns nil if unable to get bounds (no selection, app doesn't support AX, etc.)
-    func getSelectionBounds() -> SelectionBounds? {
+    /// Returns nil if unable to get bounds or if bounds are invalid (common for Electron apps)
+    /// - Parameter mousePosition: The current mouse position in AppKit coordinates, used to validate bounds
+    func getSelectionBounds(mousePosition: CGPoint) -> SelectionBounds? {
+        // Try to enable accessibility for Electron apps first
+        tryEnableAccessibilityForApp()
+        
         let systemWide = AXUIElementCreateSystemWide()
         var focusedRaw: AnyObject?
         
@@ -64,12 +68,89 @@ final class AccessibilityManager {
         // Convert from CG coordinates (top-left origin) to AppKit coordinates (bottom-left origin)
         let appKitRect = cgRectToAppKit(selectionRect)
         
+        // CRITICAL: Validate bounds before accepting them
+        // Electron apps and browsers often return invalid coordinates (0,0) or screen corners
+        guard isValidSelectionBounds(appKitRect, mousePosition: mousePosition) else {
+            Logger.accessibility.info("getSelectionBounds: Bounds failed validation, returning nil for fallback")
+            return nil
+        }
+        
         // For multi-line selections, get just the first line bounds
         // We do this by getting bounds for a small range at the start
         let firstLineRect = getFirstLineBounds(focused: focused, fullRange: selectedRangeRaw!) ?? appKitRect
         
-        Logger.accessibility.info("getSelectionBounds: Got bounds \(String(describing: appKitRect)), firstLine: \(String(describing: firstLineRect))")
+        Logger.accessibility.info("getSelectionBounds: Got valid bounds \(String(describing: appKitRect)), firstLine: \(String(describing: firstLineRect))")
         return SelectionBounds(rect: appKitRect, firstLineRect: firstLineRect)
+    }
+    
+    // MARK: - Accessibility Enablement for Electron Apps
+    
+    /// Attempts to enable accessibility for Electron-based apps
+    /// This may not work due to Electron bug #37465 but worth trying
+    private func tryEnableAccessibilityForApp() {
+        guard let frontApp = NSWorkspace.shared.frontmostApplication else { return }
+        let pid = frontApp.processIdentifier
+        let axApp = AXUIElementCreateApplication(pid)
+        
+        // Try to enable manual accessibility (may fail for some apps)
+        _ = AXUIElementSetAttributeValue(axApp, "AXManualAccessibility" as CFString, true as CFTypeRef)
+        
+        // Also try AXEnhancedUserInterface as alternative
+        _ = AXUIElementSetAttributeValue(axApp, "AXEnhancedUserInterface" as CFString, true as CFTypeRef)
+    }
+    
+    // MARK: - Bounds Validation
+    
+    /// Validates that selection bounds are reasonable and not from a failed AX retrieval
+    /// Electron apps and browsers commonly return (0,0) or screen corner coordinates
+    private func isValidSelectionBounds(_ rect: CGRect, mousePosition: CGPoint) -> Bool {
+        let screenHeight = NSScreen.main?.frame.height ?? 900
+        
+        // Check 1: Non-zero dimensions
+        guard rect.width > 0 && rect.height > 5 else {
+            Logger.accessibility.debug("Bounds invalid: zero/tiny dimensions (\(rect.width)x\(rect.height))")
+            return false
+        }
+        
+        // Check 2: Not at screen corners (common failure mode for Electron/browsers)
+        // Bottom-left corner check
+        let nearBottomLeft = rect.origin.x < 50 && rect.origin.y < 50
+        // Top-left corner check (after coordinate conversion)
+        let nearTopLeft = rect.origin.x < 50 && rect.origin.y > screenHeight - 100
+        if nearBottomLeft || nearTopLeft {
+            Logger.accessibility.debug("Bounds invalid: near screen corner (origin: \(rect.origin.x), \(rect.origin.y))")
+            return false
+        }
+        
+        // Check 3: Must intersect at least one visible screen
+        let isOnAnyScreen = NSScreen.screens.contains { screen in
+            screen.frame.intersects(rect)
+        }
+        guard isOnAnyScreen else {
+            Logger.accessibility.debug("Bounds invalid: not on any visible screen")
+            return false
+        }
+        
+        // Check 4: CRITICAL - Bounds should be reasonably close to mouse position
+        // If AX bounds are > 400px away from mouse, something is wrong
+        let distanceToMouse = hypot(rect.midX - mousePosition.x, rect.midY - mousePosition.y)
+        if distanceToMouse > 400 {
+            Logger.accessibility.debug("Bounds invalid: too far from mouse position (\(Int(distanceToMouse))px)")
+            return false
+        }
+        
+        // Check 5: Not unreasonably large (> 25% of screen area)
+        if let mainScreen = NSScreen.main {
+            let screenArea = mainScreen.frame.width * mainScreen.frame.height
+            let boundsArea = rect.width * rect.height
+            if boundsArea > screenArea * 0.25 {
+                Logger.accessibility.debug("Bounds invalid: too large (\(Int(boundsArea)) > 25% of screen)")
+                return false
+            }
+        }
+        
+        Logger.accessibility.debug("Bounds valid: \(String(describing: rect)), distance to mouse: \(Int(distanceToMouse))px")
+        return true
     }
     
     /// Gets the bounds of just the first line of a selection (for multi-line selections)

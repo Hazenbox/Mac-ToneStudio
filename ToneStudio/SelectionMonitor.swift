@@ -291,9 +291,10 @@ final class SelectionMonitor {
                 let appKitMousePos = cgPointToAppKit(lastMousePosition)
                 
                 // Try to get precise selection bounds from Accessibility API
+                // Pass mouse position for validation (to detect invalid AX bounds from Electron apps)
                 let result: SelectionResult
-                if let bounds = accessibilityManager.getSelectionBounds() {
-                    Logger.selection.info("Got precise selection bounds: \(String(describing: bounds.rect))")
+                if let bounds = accessibilityManager.getSelectionBounds(mousePosition: appKitMousePos) {
+                    Logger.selection.info("Got VALID precise selection bounds: \(String(describing: bounds.rect))")
                     result = SelectionResult(
                         text: trimmedText,
                         selectionBounds: bounds.rect,
@@ -302,8 +303,8 @@ final class SelectionMonitor {
                         hasPreciseBounds: true
                     )
                 } else {
-                    // Fallback to mouse position
-                    Logger.selection.info("Using mouse position as fallback for bounds")
+                    // Fallback to mouse position (AX bounds were nil or invalid)
+                    Logger.selection.info("Using mouse position as fallback (AX bounds invalid or unavailable)")
                     let fallbackRect = CGRect(x: appKitMousePos.x, y: appKitMousePos.y, width: 1, height: 20)
                     result = SelectionResult(
                         text: trimmedText,

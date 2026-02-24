@@ -15,9 +15,9 @@ enum AppConstants {
     // MARK: - Text Selection
     nonisolated(unsafe) static let minSelectionLength = 3
     nonisolated(unsafe) static let maxSelectionLength = 50_000
-    nonisolated(unsafe) static let debounceInterval: TimeInterval = 0.3
+    nonisolated(unsafe) static let debounceInterval: TimeInterval = 0.35
     nonisolated(unsafe) static let clipboardRestoreDelay: TimeInterval = 0.2
-    nonisolated(unsafe) static let clipboardReadDelay: UInt32 = 150_000
+    nonisolated(unsafe) static let clipboardReadDelay: UInt32 = 250_000
     
     // MARK: - Tooltip
     nonisolated(unsafe) static let miniIconAutoHideDelay: TimeInterval = 3.5

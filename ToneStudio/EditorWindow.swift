@@ -348,7 +348,7 @@ final class EditorWindow: NSObject {
         let x = screenFrame.midX - Self.windowSize.width / 2
         let y = screenFrame.midY - Self.windowSize.height / 2 + 100 // Slightly above center
         
-        panel.setFrame(NSRect(x: x, y: y, size: Self.windowSize), display: false)
+        panel.setFrame(NSRect(x: x, y: y, width: Self.windowSize.width, height: Self.windowSize.height), display: false)
         
         // Reset state
         currentState = .idle

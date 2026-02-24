@@ -16,7 +16,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var currentTask: Task<Void, Never>?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        if AXIsProcessTrusted() {
+        let isTrusted = AXIsProcessTrusted()
+        Logger.permissions.info("App launched — AXIsProcessTrusted: \(isTrusted)")
+        
+        if isTrusted {
             startMonitoring()
         } else {
             permissionsManager.openAccessibilitySettingsDirectly()

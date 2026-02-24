@@ -20,9 +20,10 @@ final class SelectionMonitor {
 
     func start(callback: @escaping SelectionCallback) {
         self.callback = callback
+        let isTrusted = AXIsProcessTrusted()
+        Logger.selection.info("SelectionMonitor starting — AXIsProcessTrusted: \(isTrusted)")
         startEventTap()
         observeSessionChanges()
-        Logger.selection.info("SelectionMonitor started")
     }
 
     func stop() {
@@ -41,7 +42,7 @@ final class SelectionMonitor {
 
     // MARK: - CGEventTap (runs on background thread)
 
-    private func startEventTap() {
+    private func startEventTap(retryCount: Int = 0) {
         let monitor = self
         let thread = Thread {
             let mask = CGEventMask(1 << CGEventType.leftMouseUp.rawValue)
@@ -75,7 +76,14 @@ final class SelectionMonitor {
                 userInfo: refcon
             ) else {
                 DispatchQueue.main.async {
-                    Logger.selection.error("Failed to create CGEventTap — is accessibility granted?")
+                    let isTrusted = AXIsProcessTrusted()
+                    Logger.selection.error("Failed to create CGEventTap — AXIsProcessTrusted: \(isTrusted), retry: \(retryCount)")
+                    
+                    if retryCount < 3 {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            monitor.startEventTap(retryCount: retryCount + 1)
+                        }
+                    }
                 }
                 return
             }
@@ -86,6 +94,7 @@ final class SelectionMonitor {
 
             DispatchQueue.main.async {
                 monitor.machPort = tap
+                Logger.selection.info("CGEventTap created successfully")
             }
 
             CFRunLoopRun()

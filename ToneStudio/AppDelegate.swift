@@ -12,6 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let feedbackService = FeedbackService()
     let accessibilityManager = AccessibilityManager()
     let hotkeyManager = HotkeyManager()
+    
+    private var serviceProvider: ServiceProvider?
 
     private var selectedText: String = ""
     private var lastSelectionRect: CGRect = .zero
@@ -22,6 +24,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let isTrusted = AXIsProcessTrusted()
         Logger.permissions.info("App launched — AXIsProcessTrusted: \(isTrusted)")
+        
+        // Register macOS Services
+        registerServices()
         
         if isTrusted {
             startMonitoring()
@@ -40,6 +45,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.startMonitoring()
             }
         }
+    }
+    
+    // MARK: - Services Registration
+    
+    private func registerServices() {
+        serviceProvider = ServiceProvider(appDelegate: self)
+        NSApp.servicesProvider = serviceProvider
+        NSUpdateDynamicServices()
+        Logger.services.info("Registered macOS Services")
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -246,6 +260,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     
     func openEditor() {
         handleEditorHotkey()
+    }
+    
+    func openEditorWithText(_ text: String) {
+        if tooltipWindow.isVisible {
+            tooltipWindow.hide()
+        }
+        currentTask?.cancel()
+        currentTask = nil
+        
+        selectedText = text
+        editorWindow.showWithText(text)
+    }
+    
+    // MARK: - Service Handlers
+    
+    func handleServiceRephrase(text: String, pasteboard: NSPasteboard) async {
+        Logger.services.info("Handling service rephrase for \(text.count) chars")
+        
+        do {
+            let result = try await rewriteService.rewrite(text: text)
+            pasteboard.clearContents()
+            pasteboard.setString(result, forType: .string)
+            Logger.services.info("Service rephrase completed, result written to pasteboard")
+        } catch {
+            Logger.services.error("Service rephrase failed: \(error.localizedDescription)")
+        }
     }
     
     private func setupEditorCallbacks() {

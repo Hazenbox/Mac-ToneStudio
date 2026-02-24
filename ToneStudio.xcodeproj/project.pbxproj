@@ -106,13 +106,13 @@
 			);
 			mainGroup = 63137CF42F487ECB00C41B2E;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
-			productRefGroup = 63137CFE2F487ECB00C41B2E /* Products */;
 			packageReferences = (
 				63137D0D2F48900000C41B2E /* XCRemoteSwiftPackageReference "MenuBarExtraAccess" */,
 				63137D142F4D000000C41B2E /* XCRemoteSwiftPackageReference "SelectedTextKit" */,
 				63137D162F4D000100C41B2E /* XCRemoteSwiftPackageReference "HotKey" */,
 			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 63137CFE2F487ECB00C41B2E /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (

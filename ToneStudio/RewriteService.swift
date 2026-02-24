@@ -27,7 +27,13 @@ actor RewriteService {
     }
 
     private struct RewriteResponse: Codable {
-        let rewritten: String
+        let success: Bool
+        let data: RewriteData?
+        let error: String?
+        
+        struct RewriteData: Codable {
+            let rewritten: String
+        }
     }
 
     func rewrite(text: String) async throws -> String {
@@ -41,7 +47,7 @@ actor RewriteService {
             request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         }
 
-        let body: [String: String] = ["text": text, "mode": "rephrase"]
+        let body: [String: String] = ["text": text, "style": "professional"]
         request.httpBody = try JSONEncoder().encode(body)
 
         Logger.rewrite.info("Sending rewrite request (\(text.count) chars)")
@@ -72,11 +78,15 @@ actor RewriteService {
             throw RewriteError.networkError(error)
         }
 
-        guard !decoded.rewritten.isEmpty else {
+        guard decoded.success, let rewrittenText = decoded.data?.rewritten, !rewrittenText.isEmpty else {
+            if let errorMsg = decoded.error {
+                Logger.rewrite.error("API error: \(errorMsg)")
+                throw RewriteError.serverError(statusCode: 400, body: errorMsg)
+            }
             throw RewriteError.emptyResponse
         }
 
-        Logger.rewrite.info("Rewrite success (\(decoded.rewritten.count) chars)")
-        return decoded.rewritten
+        Logger.rewrite.info("Rewrite success (\(rewrittenText.count) chars)")
+        return rewrittenText
     }
 }

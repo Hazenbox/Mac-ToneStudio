@@ -11,6 +11,8 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 4) {
             statusSection
             Divider()
+            shortcutSection
+            Divider()
             apiKeySection
             Divider()
             settingsSection
@@ -28,11 +30,29 @@ struct MenuBarView: View {
             Circle()
                 .fill(permissionsManager.isAccessibilityGranted ? .green : .yellow)
                 .frame(width: 8, height: 8)
-            Text(permissionsManager.isAccessibilityGranted ? "Active" : "Needs Permission")
+            Text(permissionsManager.isAccessibilityGranted ? "active" : "needs permission")
                 .font(.system(size: 12))
             Spacer()
             Text("v1.0")
                 .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+    }
+    
+    // MARK: - Shortcut
+    
+    private var shortcutSection: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "keyboard")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            Text("shortcut")
+                .font(.system(size: 12))
+            Spacer()
+            Text("Cmd+Option+J")
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 8)
@@ -45,14 +65,14 @@ struct MenuBarView: View {
         Group {
             if showingApiKeyInput {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("API Key")
+                    Text("api key")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
                     HStack {
-                        SecureField("Enter API key", text: $apiKeyText)
+                        SecureField("enter api key", text: $apiKeyText)
                             .textFieldStyle(.roundedBorder)
                             .font(.system(size: 12))
-                        Button("Save") {
+                        Button("save") {
                             if !apiKeyText.isEmpty {
                                 KeychainHelper.save(key: apiKeyText)
                                 showingApiKeyInput = false
@@ -70,7 +90,7 @@ struct MenuBarView: View {
                 } label: {
                     HStack {
                         Image(systemName: "key")
-                        Text("Configure API Key...")
+                        Text("configure api key...")
                         Spacer()
                         if KeychainHelper.load() != nil {
                             Image(systemName: "checkmark.circle.fill")
@@ -90,7 +110,7 @@ struct MenuBarView: View {
 
     private var settingsSection: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Toggle("Launch at Login", isOn: $launchAtLogin)
+            Toggle("launch at login", isOn: $launchAtLogin)
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .font(.system(size: 12))
@@ -106,7 +126,7 @@ struct MenuBarView: View {
                 } label: {
                     HStack {
                         Image(systemName: "lock.shield")
-                        Text("Grant Accessibility...")
+                        Text("grant accessibility...")
                     }
                 }
                 .buttonStyle(.plain)
@@ -125,7 +145,7 @@ struct MenuBarView: View {
         } label: {
             HStack {
                 Image(systemName: "power")
-                Text("Quit Tone Studio")
+                Text("quit tone studio")
             }
         }
         .buttonStyle(.plain)

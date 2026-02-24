@@ -4,6 +4,8 @@ import OSLog
 // MARK: - Tooltip States
 
 enum TooltipState {
+    case miniIcon
+    case noSelection
     case collapsed
     case loading
     case result(String)
@@ -123,8 +125,13 @@ final class TooltipWindow {
     // MARK: Event monitors
     private var globalClickMonitor: Any?
     private var localKeyMonitor: Any?
+    
+    // MARK: Auto-hide timer
+    private var autoHideTimer: Timer?
 
     // MARK: Sizing
+    private static let miniIconSize = AppConstants.miniIconSize
+    private static let noSelectionSize = NSSize(width: 160, height: 36)
     /// Tail height reserved at the bottom of the panel for default/loading states
     private static let tailHeight: CGFloat = BubbleContainerView.tailHeight
     private static let bubbleCorner: CGFloat = BubbleContainerView.cornerRadius
@@ -168,30 +175,61 @@ final class TooltipWindow {
     // MARK: - Show / Hide
 
     func show(near cursorRect: CGRect) {
+        showInternal(near: cursorRect, state: .collapsed, size: Self.defaultSize)
+    }
+    
+    func showMiniIcon(near cursorRect: CGRect) {
+        let size = NSSize(width: Self.miniIconSize, height: Self.miniIconSize)
+        showInternal(near: cursorRect, state: .miniIcon, size: size, offsetRight: true)
+        startAutoHideTimer(delay: AppConstants.miniIconAutoHideDelay)
+    }
+    
+    func showNoSelection(near cursorRect: CGRect) {
+        showInternal(near: cursorRect, state: .noSelection, size: Self.noSelectionSize)
+        startAutoHideTimer(delay: AppConstants.noSelectionAutoHideDelay)
+    }
+    
+    private func showInternal(near cursorRect: CGRect, state: TooltipState, size: NSSize, offsetRight: Bool = false) {
+        cancelAutoHideTimer()
+        
         let cursorPoint = NSPoint(x: cursorRect.midX, y: cursorRect.midY)
         let screen = NSScreen.screens.first { $0.frame.contains(cursorPoint) } ?? NSScreen.main!
         let visibleFrame = screen.visibleFrame
 
-        let panelSize = Self.defaultSize
+        var origin: CGPoint
+        if offsetRight {
+            origin = CGPoint(
+                x: cursorPoint.x + 20,
+                y: cursorPoint.y + 10
+            )
+        } else {
+            origin = CGPoint(
+                x: cursorPoint.x - size.width / 2,
+                y: cursorPoint.y + 16
+            )
+        }
 
-        var origin = CGPoint(
-            x: cursorPoint.x - panelSize.width / 2,
-            y: cursorPoint.y + 16
-        )
+        origin.x = max(visibleFrame.minX + 8, min(origin.x, visibleFrame.maxX - size.width - 8))
 
-        origin.x = max(visibleFrame.minX + 8, min(origin.x, visibleFrame.maxX - panelSize.width - 8))
-
-        if origin.y + panelSize.height > visibleFrame.maxY {
-            // Not enough room above — position below cursor (tail points up, but we keep same design)
-            origin.y = cursorPoint.y - panelSize.height - 8
+        if origin.y + size.height > visibleFrame.maxY {
+            origin.y = cursorPoint.y - size.height - 8
         }
         if origin.y < visibleFrame.minY + 8 {
             origin.y = visibleFrame.minY + 8
         }
 
-        // Set frame first then build UI
-        panel.setFrame(NSRect(origin: origin, size: panelSize), display: false)
-        buildCollapsedUI(size: panelSize)
+        panel.setFrame(NSRect(origin: origin, size: size), display: false)
+        
+        switch state {
+        case .miniIcon:
+            buildMiniIconUI(size: size)
+        case .noSelection:
+            buildNoSelectionUI(size: size)
+        case .collapsed:
+            buildCollapsedUI(size: size)
+        default:
+            break
+        }
 
         panel.alphaValue = 0
         panel.orderFrontRegardless()
@@ -201,10 +239,25 @@ final class TooltipWindow {
         }
 
         addEventMonitors()
-        Logger.tooltip.info("Tooltip shown at (\(origin.x), \(origin.y)) mouse at (\(cursorPoint.x), \(cursorPoint.y))")
+        Logger.tooltip.info("Tooltip shown at (\(origin.x), \(origin.y)) state: \(String(describing: state))")
+    }
+    
+    private func startAutoHideTimer(delay: TimeInterval) {
+        cancelAutoHideTimer()
+        autoHideTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.hide()
+            }
+        }
+    }
+    
+    private func cancelAutoHideTimer() {
+        autoHideTimer?.invalidate()
+        autoHideTimer = nil
     }
 
     func hide() {
+        cancelAutoHideTimer()
         removeEventMonitors()
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.15
@@ -222,16 +275,33 @@ final class TooltipWindow {
 
     var isInteracting: Bool {
         switch currentState {
-        case .loading, .result, .error: return true
-        case .collapsed: return false
+        case .loading, .result, .error, .collapsed: return true
+        case .miniIcon, .noSelection: return false
         }
+    }
+    
+    var isMiniIcon: Bool {
+        if case .miniIcon = currentState { return true }
+        return false
     }
 
     // MARK: - Public state updater (called from AppDelegate)
 
     func updateUI(_ state: TooltipState) {
+        cancelAutoHideTimer()
         currentState = state
         switch state {
+        case .miniIcon:
+            panel.isMovableByWindowBackground = false
+            let size = NSSize(width: Self.miniIconSize, height: Self.miniIconSize)
+            buildMiniIconUI(size: size)
+            resizeAndReanchor(to: size, hasTail: false)
+            startAutoHideTimer(delay: AppConstants.miniIconAutoHideDelay)
+        case .noSelection:
+            panel.isMovableByWindowBackground = false
+            buildNoSelectionUI(size: Self.noSelectionSize)
+            resizeAndReanchor(to: Self.noSelectionSize, hasTail: false)
+            startAutoHideTimer(delay: AppConstants.noSelectionAutoHideDelay)
         case .collapsed:
             panel.isMovableByWindowBackground = false
             buildCollapsedUI(size: Self.defaultSize)
@@ -252,6 +322,64 @@ final class TooltipWindow {
             resizeAndReanchor(to: NSSize(width: Self.errorWidth, height: height), hasTail: false)
             panel.isMovableByWindowBackground = true
         }
+    }
+
+    // MARK: - Mini Icon State
+    
+    private func buildMiniIconUI(size: NSSize) {
+        currentState = .miniIcon
+        clearContainer()
+        
+        let iconSize = size.width
+        
+        let bgLayer = CALayer()
+        bgLayer.frame = CGRect(origin: .zero, size: size)
+        bgLayer.backgroundColor = Self.darkBubbleBG.cgColor
+        bgLayer.cornerRadius = iconSize / 2
+        bgLayer.shadowColor = NSColor.black.cgColor
+        bgLayer.shadowOpacity = 0.3
+        bgLayer.shadowOffset = CGSize(width: 0, height: -2)
+        bgLayer.shadowRadius = 4
+        containerView.layer?.addSublayer(bgLayer)
+        
+        let avatarSize = iconSize - 8
+        let avatar = makeAvatarImageView(size: avatarSize)
+        avatar.frame = NSRect(
+            x: (iconSize - avatarSize) / 2,
+            y: (iconSize - avatarSize) / 2,
+            width: avatarSize,
+            height: avatarSize
+        )
+        containerView.addSubview(avatar)
+        
+        let clickArea = ClickThroughButton(frame: NSRect(origin: .zero, size: size))
+        clickArea.target = self
+        clickArea.action = #selector(miniIconTapped)
+        clickArea.isBordered = false
+        clickArea.bezelStyle = .shadowlessSquare
+        containerView.addSubview(clickArea)
+    }
+    
+    // MARK: - No Selection State
+    
+    private func buildNoSelectionUI(size: NSSize) {
+        currentState = .noSelection
+        clearContainer()
+        
+        let bgLayer = CALayer()
+        bgLayer.frame = CGRect(origin: .zero, size: size)
+        bgLayer.backgroundColor = Self.darkBubbleBG.cgColor
+        bgLayer.cornerRadius = size.height / 2
+        bgLayer.shadowColor = NSColor.black.cgColor
+        bgLayer.shadowOpacity = 0.3
+        bgLayer.shadowOffset = CGSize(width: 0, height: -2)
+        bgLayer.shadowRadius = 4
+        containerView.layer?.addSublayer(bgLayer)
+        
+        let label = makeLabel("select text first", size: 12, weight: .medium, color: Self.secondaryText)
+        label.alignment = .center
+        label.frame = NSRect(x: 0, y: (size.height - 14) / 2, width: size.width, height: 14)
+        containerView.addSubview(label)
     }
 
     // MARK: - Collapsed State
@@ -510,8 +638,12 @@ final class TooltipWindow {
             guard let self, self.panel.isVisible else { return }
             switch self.currentState {
             case .result, .error:
-                // Persistent states — user must click X explicitly, don't auto-dismiss
                 break
+            case .miniIcon, .noSelection:
+                let mouseLoc = NSEvent.mouseLocation
+                if !self.panel.frame.contains(mouseLoc) {
+                    self.hide()
+                }
             case .collapsed, .loading:
                 let mouseLoc = NSEvent.mouseLocation
                 if !self.panel.frame.contains(mouseLoc) {
@@ -542,6 +674,11 @@ final class TooltipWindow {
     @objc private func copyTapped()     { onCopy?(rewrittenText) }
     @objc private func cancelTapped()   { hide(); onCancel?() }
     @objc private func retryTapped()    { onRetry?() }
+    
+    @objc private func miniIconTapped() {
+        cancelAutoHideTimer()
+        updateUI(.collapsed)
+    }
 }
 
 // MARK: - Invisible click-through button overlay

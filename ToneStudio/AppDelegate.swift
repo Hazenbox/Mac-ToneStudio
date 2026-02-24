@@ -9,15 +9,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let tooltipWindow = TooltipWindow()
     let rewriteService = RewriteService()
     let accessibilityManager = AccessibilityManager()
+    let hotkeyManager = HotkeyManager()
 
     private var selectedText: String = ""
+    private var lastSelectionRect: CGRect = .zero
     private var currentTask: Task<Void, Never>?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if AXIsProcessTrusted() {
             startMonitoring()
         } else {
-            // Show system prompt + open System Settings in one shot (no duplicate prompt)
             permissionsManager.openAccessibilitySettingsDirectly()
             permissionsManager.startPolling()
         }
@@ -36,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         selectionMonitor.stop()
+        hotkeyManager.stop()
         currentTask?.cancel()
     }
 
@@ -46,13 +48,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             self.handleSelection(result)
         }
+        
+        hotkeyManager.start { [weak self] in
+            self?.handleHotkeyTrigger()
+        }
+        
         Logger.permissions.info("Selection monitoring active")
     }
 
     // MARK: - Selection handling
 
     private func handleSelection(_ result: SelectionResult) {
-        // Ignore mouse-ups that originate inside the tooltip window itself (prevents hover re-triggering)
         if tooltipWindow.isVisible,
            tooltipWindow.windowFrame.contains(CGPoint(x: result.screenRect.midX, y: result.screenRect.midY)) {
             return
@@ -66,13 +72,100 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         currentTask = nil
 
         selectedText = result.text
+        lastSelectionRect = result.screenRect
 
         if tooltipWindow.isVisible {
             tooltipWindow.hide()
         }
 
-        tooltipWindow.show(near: result.screenRect)
-
+        tooltipWindow.showMiniIcon(near: result.screenRect)
+        setupTooltipCallbacks()
+    }
+    
+    // MARK: - Hotkey handling
+    
+    private func handleHotkeyTrigger() {
+        if tooltipWindow.isVisible && tooltipWindow.isMiniIcon {
+            tooltipWindow.updateUI(.collapsed)
+            return
+        }
+        
+        let text = getSelectedTextViaClipboard()
+        
+        if let text = text, !text.isEmpty, text.count >= AppConstants.minSelectionLength {
+            selectedText = text
+            let mouseLocation = NSEvent.mouseLocation
+            lastSelectionRect = CGRect(x: mouseLocation.x, y: mouseLocation.y, width: 1, height: 1)
+            
+            if tooltipWindow.isVisible {
+                tooltipWindow.hide()
+            }
+            
+            tooltipWindow.show(near: lastSelectionRect)
+            setupTooltipCallbacks()
+        } else {
+            let mouseLocation = NSEvent.mouseLocation
+            let rect = CGRect(x: mouseLocation.x, y: mouseLocation.y, width: 1, height: 1)
+            
+            if tooltipWindow.isVisible {
+                tooltipWindow.hide()
+            }
+            
+            tooltipWindow.showNoSelection(near: rect)
+        }
+    }
+    
+    private func getSelectedTextViaClipboard() -> String? {
+        let pasteboard = NSPasteboard.general
+        let backup = backupPasteboard(pasteboard)
+        
+        pasteboard.clearContents()
+        
+        simulateKeystroke(virtualKey: 0x08, flags: .maskCommand) // Cmd+C
+        
+        usleep(AppConstants.clipboardReadDelay)
+        
+        let text = pasteboard.string(forType: .string)
+        
+        restorePasteboard(pasteboard, from: backup)
+        
+        return text
+    }
+    
+    private func backupPasteboard(_ pasteboard: NSPasteboard) -> [(NSPasteboard.PasteboardType, Data)] {
+        guard let items = pasteboard.pasteboardItems else { return [] }
+        var backup: [(NSPasteboard.PasteboardType, Data)] = []
+        for item in items {
+            for type in item.types {
+                if let data = item.data(forType: type) {
+                    backup.append((type, data))
+                }
+            }
+        }
+        return backup
+    }
+    
+    private func restorePasteboard(_ pasteboard: NSPasteboard, from backup: [(NSPasteboard.PasteboardType, Data)]) {
+        pasteboard.clearContents()
+        if backup.isEmpty { return }
+        let item = NSPasteboardItem()
+        for (type, data) in backup {
+            item.setData(data, forType: type)
+        }
+        pasteboard.writeObjects([item])
+    }
+    
+    private func simulateKeystroke(virtualKey: CGKeyCode, flags: CGEventFlags) {
+        let src = CGEventSource(stateID: .hidSystemState)
+        let keyDown = CGEvent(keyboardEventSource: src, virtualKey: virtualKey, keyDown: true)
+        let keyUp = CGEvent(keyboardEventSource: src, virtualKey: virtualKey, keyDown: false)
+        keyDown?.flags = flags
+        keyUp?.flags = flags
+        keyDown?.post(tap: .cghidEventTap)
+        keyUp?.post(tap: .cghidEventTap)
+    }
+    
+    private func setupTooltipCallbacks() {
         tooltipWindow.onRephrase = { [weak self] in
             self?.performRephrase()
         }

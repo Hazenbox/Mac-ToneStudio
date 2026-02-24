@@ -8,4 +8,5 @@ nonisolated extension Logger {
     static let tooltip = Logger(subsystem: subsystem, category: "tooltip")
     static let rewrite = Logger(subsystem: subsystem, category: "rewrite")
     static let accessibility = Logger(subsystem: subsystem, category: "accessibility")
+    static let hotkey = Logger(subsystem: subsystem, category: "hotkey")
 }

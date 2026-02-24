@@ -91,7 +91,7 @@ struct MenuBarView: View {
                 Text("Quick Rephrase")
                     .font(.system(size: iconSize))
                 Spacer()
-                Text("⌘⌥T")
+                Text("⌥⌘␣")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.secondary)
             }

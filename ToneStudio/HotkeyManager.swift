@@ -23,8 +23,8 @@ final class HotkeyManager {
             let hasShift = event.modifierFlags.contains(.shift)
             let hasControl = event.modifierFlags.contains(.control)
             
-            // T key = keyCode 17: Cmd+Option+T - Quick rephrase
-            if event.keyCode == 17 && hasCmd && hasOption && !hasShift && !hasControl {
+            // Space key = keyCode 49: Cmd+Option+Space - Quick rephrase
+            if event.keyCode == 49 && hasCmd && hasOption && !hasShift && !hasControl {
                 DispatchQueue.main.async {
                     self.onTrigger?()
                 }
@@ -40,7 +40,7 @@ final class HotkeyManager {
             }
         }
         
-        Logger.hotkey.info("HotkeyManager started (Cmd+Option+T for rephrase, Cmd+Shift+J for editor)")
+        Logger.hotkey.info("HotkeyManager started (Cmd+Option+Space for rephrase, Cmd+Shift+J for editor)")
     }
     
     func stop() {

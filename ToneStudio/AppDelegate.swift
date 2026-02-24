@@ -262,8 +262,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     private func setupEditorCallbacks() {
-        editorWindow.onGenerate = { [weak self] text, prompt in
-            self?.performEditorRewrite(text: text, prompt: prompt)
+        editorWindow.onGenerate = { [weak self] text in
+            self?.performEditorRewrite(text: text)
         }
         
         editorWindow.onCopy = { [weak self] text in
@@ -278,14 +278,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     
-    private func performEditorRewrite(text: String, prompt: String) {
+    private func performEditorRewrite(text: String) {
         editorTask?.cancel()
         
         editorWindow.updateState(.loading)
         
         editorTask = Task {
             do {
-                let result = try await rewriteService.rewrite(text: text, prompt: prompt.isEmpty ? nil : prompt)
+                // Pass the entire input as the prompt - user can include instructions in their text
+                let result = try await rewriteService.rewrite(text: text, prompt: text)
                 guard !Task.isCancelled else { return }
                 editorWindow.updateState(.result(result))
             } catch is CancellationError {

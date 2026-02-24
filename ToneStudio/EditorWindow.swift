@@ -14,7 +14,7 @@ final class KeyablePanel: NSPanel {
 final class EditorWindow: NSObject {
     
     // MARK: Callbacks
-    var onGenerate: ((String, String) -> Void)?  // (text, prompt)
+    var onGenerate: ((String) -> Void)?
     var onCopy: ((String) -> Void)?
     var onReplace: ((String) -> Void)?
     var onClose: (() -> Void)?
@@ -34,9 +34,9 @@ final class EditorWindow: NSObject {
     private let panel: KeyablePanel
     private let containerView: NSVisualEffectView
     
+    private var avatarImageView: NSImageView!
     private var inputTextView: NSTextView!
     private var inputScrollView: NSScrollView!
-    private var promptField: NSTextField!
     private var generateButton: NSButton!
     private var resultTextView: NSTextView!
     private var resultScrollView: NSScrollView!
@@ -44,7 +44,6 @@ final class EditorWindow: NSObject {
     private var replaceButton: NSButton!
     private var closeButton: NSButton!
     private var titleLabel: NSTextField!
-    private var promptLabel: NSTextField!
     private var loadingIndicator: NSProgressIndicator!
     private var statusLabel: NSTextField!
     private var resultContainer: NSView!
@@ -55,18 +54,18 @@ final class EditorWindow: NSObject {
     private var globalClickMonitor: Any?
     
     // MARK: Sizing
-    private static let windowSize = NSSize(width: 500, height: 420)
-    private static let cornerRadius: CGFloat = 16
+    private static let windowSize = NSSize(width: 500, height: 340)
+    private static let cornerRadius: CGFloat = 12
     private static let padding: CGFloat = 20
-    private static let inputHeight: CGFloat = 100
+    private static let inputHeight: CGFloat = 120
     private static let resultHeight: CGFloat = 100
     
     // MARK: Colors
-    private static let inputBgColor = NSColor(red: 0.12, green: 0.12, blue: 0.14, alpha: 1)
-    private static let borderColor = NSColor(red: 0.25, green: 0.25, blue: 0.28, alpha: 1)
-    private static let accentColor = NSColor(red: 0.4, green: 0.6, blue: 1.0, alpha: 1)
-    private static let textColor = NSColor.white
-    private static let secondaryTextColor = NSColor(white: 0.6, alpha: 1)
+    private static let inputBgColor = NSColor(red: 0.08, green: 0.08, blue: 0.10, alpha: 1)
+    private static let borderColor = NSColor(red: 0.22, green: 0.22, blue: 0.25, alpha: 1)
+    private static let accentColor = NSColor.controlAccentColor
+    private static let textColor = NSColor.labelColor
+    private static let secondaryTextColor = NSColor.secondaryLabelColor
     
     // MARK: - Init
     
@@ -115,22 +114,17 @@ final class EditorWindow: NSObject {
         let contentWidth = Self.windowSize.width - padding * 2
         var yOffset = Self.windowSize.height - padding
         
-        // Title bar with close button
-        yOffset -= 24
+        // Title bar with avatar and close button
+        yOffset -= 28
         setupTitleBar(at: yOffset, width: contentWidth, padding: padding)
         
         // Input section
-        yOffset -= 12
+        yOffset -= 16
         yOffset -= Self.inputHeight
         setupInputSection(at: yOffset, width: contentWidth, padding: padding)
         
-        // Prompt field
-        yOffset -= 16
-        yOffset -= 28
-        setupPromptField(at: yOffset, width: contentWidth, padding: padding)
-        
         // Generate button
-        yOffset -= 12
+        yOffset -= 16
         yOffset -= 32
         setupGenerateButton(at: yOffset, width: contentWidth, padding: padding)
         
@@ -152,15 +146,21 @@ final class EditorWindow: NSObject {
     }
     
     private func setupTitleBar(at y: CGFloat, width: CGFloat, padding: CGFloat) {
-        // Title
-        titleLabel = NSTextField(labelWithString: "tone studio")
+        // Avatar
+        let avatarSize: CGFloat = 24
+        avatarImageView = makeAvatarImageView(size: avatarSize)
+        avatarImageView.frame = NSRect(x: padding, y: y + 2, width: avatarSize, height: avatarSize)
+        containerView.addSubview(avatarImageView)
+        
+        // Title (beside avatar)
+        titleLabel = NSTextField(labelWithString: "Tone Studio")
         titleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
         titleLabel.textColor = Self.textColor
-        titleLabel.frame = NSRect(x: padding, y: y, width: width - 30, height: 24)
+        titleLabel.frame = NSRect(x: padding + avatarSize + 10, y: y + 4, width: width - avatarSize - 40, height: 20)
         containerView.addSubview(titleLabel)
         
-        // Close button
-        closeButton = NSButton(frame: NSRect(x: Self.windowSize.width - padding - 20, y: y + 2, width: 20, height: 20))
+        // Close button (right side)
+        closeButton = NSButton(frame: NSRect(x: Self.windowSize.width - padding - 20, y: y + 4, width: 20, height: 20))
         closeButton.bezelStyle = .inline
         closeButton.isBordered = false
         closeButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Close")
@@ -175,13 +175,13 @@ final class EditorWindow: NSObject {
         let inputContainer = NSView(frame: NSRect(x: padding, y: y, width: width, height: Self.inputHeight))
         inputContainer.wantsLayer = true
         inputContainer.layer?.backgroundColor = Self.inputBgColor.cgColor
-        inputContainer.layer?.cornerRadius = 10
+        inputContainer.layer?.cornerRadius = 8
         inputContainer.layer?.borderWidth = 1
         inputContainer.layer?.borderColor = Self.borderColor.cgColor
         containerView.addSubview(inputContainer)
         
         // Scroll view for text
-        inputScrollView = NSScrollView(frame: NSRect(x: 8, y: 8, width: width - 16, height: Self.inputHeight - 16))
+        inputScrollView = NSScrollView(frame: NSRect(x: 10, y: 10, width: width - 20, height: Self.inputHeight - 20))
         inputScrollView.hasVerticalScroller = true
         inputScrollView.hasHorizontalScroller = false
         inputScrollView.autohidesScrollers = true
@@ -200,54 +200,23 @@ final class EditorWindow: NSObject {
         inputTextView.isVerticallyResizable = true
         inputTextView.isHorizontallyResizable = false
         inputTextView.textContainer?.widthTracksTextView = true
-        inputTextView.textContainer?.containerSize = NSSize(width: width - 32, height: .greatestFiniteMagnitude)
+        inputTextView.textContainer?.containerSize = NSSize(width: width - 36, height: .greatestFiniteMagnitude)
         inputTextView.delegate = self
-        
-        // Placeholder
-        inputTextView.string = ""
+        inputTextView.insertionPointColor = Self.accentColor
         
         inputScrollView.documentView = inputTextView
         inputContainer.addSubview(inputScrollView)
     }
     
-    private func setupPromptField(at y: CGFloat, width: CGFloat, padding: CGFloat) {
-        // Label
-        promptLabel = NSTextField(labelWithString: "prompt")
-        promptLabel.font = .systemFont(ofSize: 11, weight: .medium)
-        promptLabel.textColor = Self.secondaryTextColor
-        promptLabel.frame = NSRect(x: padding, y: y + 30, width: 60, height: 16)
-        containerView.addSubview(promptLabel)
-        
-        // Field
-        promptField = NSTextField(frame: NSRect(x: padding, y: y, width: width, height: 28))
-        promptField.placeholderString = "e.g., make it more friendly, simplify this, fix grammar..."
-        promptField.font = .systemFont(ofSize: 12)
-        promptField.textColor = Self.textColor
-        promptField.backgroundColor = Self.inputBgColor
-        promptField.isBordered = false
-        promptField.focusRingType = .none
-        promptField.wantsLayer = true
-        promptField.layer?.cornerRadius = 6
-        promptField.layer?.borderWidth = 1
-        promptField.layer?.borderColor = Self.borderColor.cgColor
-        containerView.addSubview(promptField)
-    }
-    
     private func setupGenerateButton(at y: CGFloat, width: CGFloat, padding: CGFloat) {
-        generateButton = NSButton(frame: NSRect(x: padding + (width - 120) / 2, y: y, width: 120, height: 32))
+        generateButton = NSButton(frame: NSRect(x: padding + (width - 100) / 2, y: y, width: 100, height: 28))
         generateButton.title = "generate"
         generateButton.bezelStyle = .rounded
         generateButton.font = .systemFont(ofSize: 12, weight: .medium)
-        generateButton.wantsLayer = true
-        generateButton.layer?.cornerRadius = 8
-        generateButton.contentTintColor = .white
         generateButton.target = self
         generateButton.action = #selector(generateButtonClicked)
-        
-        // Style the button
-        if let cell = generateButton.cell as? NSButtonCell {
-            cell.backgroundColor = Self.accentColor
-        }
+        generateButton.keyEquivalent = "\r"
+        generateButton.keyEquivalentModifierMask = .command
         
         containerView.addSubview(generateButton)
     }
@@ -275,14 +244,14 @@ final class EditorWindow: NSObject {
         resultContainer = NSView(frame: NSRect(x: padding, y: y, width: width, height: Self.resultHeight))
         resultContainer.wantsLayer = true
         resultContainer.layer?.backgroundColor = Self.inputBgColor.cgColor
-        resultContainer.layer?.cornerRadius = 10
+        resultContainer.layer?.cornerRadius = 8
         resultContainer.layer?.borderWidth = 1
         resultContainer.layer?.borderColor = Self.borderColor.cgColor
         resultContainer.isHidden = true
         containerView.addSubview(resultContainer)
         
         // Scroll view for result
-        resultScrollView = NSScrollView(frame: NSRect(x: 8, y: 8, width: width - 16, height: Self.resultHeight - 16))
+        resultScrollView = NSScrollView(frame: NSRect(x: 10, y: 10, width: width - 20, height: Self.resultHeight - 20))
         resultScrollView.hasVerticalScroller = true
         resultScrollView.hasHorizontalScroller = false
         resultScrollView.autohidesScrollers = true
@@ -301,7 +270,7 @@ final class EditorWindow: NSObject {
         resultTextView.isVerticallyResizable = true
         resultTextView.isHorizontallyResizable = false
         resultTextView.textContainer?.widthTracksTextView = true
-        resultTextView.textContainer?.containerSize = NSSize(width: width - 32, height: .greatestFiniteMagnitude)
+        resultTextView.textContainer?.containerSize = NSSize(width: width - 36, height: .greatestFiniteMagnitude)
         
         resultScrollView.documentView = resultTextView
         resultContainer.addSubview(resultScrollView)
@@ -315,7 +284,7 @@ final class EditorWindow: NSObject {
         copyButton.font = .systemFont(ofSize: 11)
         copyButton.target = self
         copyButton.action = #selector(copyButtonClicked)
-        copyButton.setFrameSize(NSSize(width: 80, height: 24))
+        copyButton.setFrameSize(NSSize(width: 70, height: 24))
         
         // Replace button
         replaceButton = NSButton(frame: .zero)
@@ -324,15 +293,28 @@ final class EditorWindow: NSObject {
         replaceButton.font = .systemFont(ofSize: 11)
         replaceButton.target = self
         replaceButton.action = #selector(replaceButtonClicked)
-        replaceButton.setFrameSize(NSSize(width: 80, height: 24))
+        replaceButton.setFrameSize(NSSize(width: 70, height: 24))
         
         // Stack view
         actionButtonsStack = NSStackView(views: [copyButton, replaceButton])
         actionButtonsStack.orientation = .horizontal
-        actionButtonsStack.spacing = 12
-        actionButtonsStack.frame = NSRect(x: padding + (width - 172) / 2, y: y, width: 172, height: 24)
+        actionButtonsStack.spacing = 10
+        actionButtonsStack.frame = NSRect(x: padding + (width - 150) / 2, y: y, width: 150, height: 24)
         actionButtonsStack.isHidden = true
         containerView.addSubview(actionButtonsStack)
+    }
+    
+    // MARK: - Avatar Helper
+    
+    private func makeAvatarImageView(size: CGFloat) -> NSImageView {
+        let imageView = NSImageView(frame: NSRect(x: 0, y: 0, width: size, height: size))
+        imageView.image = NSImage(named: "ai_avatar")
+        imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.imageAlignment = .alignCenter
+        imageView.wantsLayer = true
+        imageView.layer?.cornerRadius = size / 2
+        imageView.layer?.masksToBounds = true
+        return imageView
     }
     
     // MARK: - Show / Hide
@@ -352,6 +334,7 @@ final class EditorWindow: NSObject {
         
         // Reset state
         currentState = .idle
+        inputTextView.string = ""
         updateUIForState()
         
         // Show with animation
@@ -439,7 +422,7 @@ final class EditorWindow: NSObject {
             loadingIndicator.stopAnimation(nil)
             loadingIndicator.isHidden = true
             statusLabel.stringValue = message
-            statusLabel.textColor = NSColor(red: 1.0, green: 0.4, blue: 0.4, alpha: 1)
+            statusLabel.textColor = NSColor.systemRed
             statusLabel.isHidden = false
             resultContainer.isHidden = true
             actionButtonsStack.isHidden = true
@@ -451,14 +434,13 @@ final class EditorWindow: NSObject {
     
     @objc private func generateButtonClicked() {
         let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        let prompt = promptField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         
         guard !text.isEmpty else {
             updateState(.error("please enter some text"))
             return
         }
         
-        onGenerate?(text, prompt)
+        onGenerate?(text)
     }
     
     @objc private func copyButtonClicked() {
@@ -509,13 +491,10 @@ final class EditorWindow: NSObject {
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self, self.isVisible else { return }
             
-            let clickLocation = event.locationInWindow
-            let windowFrame = self.panel.frame
-            
             // Convert to screen coordinates
             let screenPoint = NSEvent.mouseLocation
             
-            if !windowFrame.contains(screenPoint) {
+            if !self.panel.frame.contains(screenPoint) {
                 self.hide()
             }
         }

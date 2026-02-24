@@ -222,15 +222,54 @@ final class TooltipWindow {
         
         // CRITICAL: If we don't have precise bounds (AX API failed for Electron/browser),
         // fall back to selection START position (where user began selecting)
+        // Position tooltip to the LEFT of the selection start (same as native apps)
         guard selection.hasPreciseBounds else {
-            NSLog("⚠️ Using selection START position for fallback at (%0.f, %0.f)", selection.selectionStartPoint.x, selection.selectionStartPoint.y)
-            let fallbackRect = CGRect(
-                x: selection.selectionStartPoint.x,
-                y: selection.selectionStartPoint.y,
-                width: 1,
-                height: selection.lineHeight
+            let startPoint = selection.selectionStartPoint
+            NSLog("⚠️ Using selection START position for fallback at (%0.f, %0.f)", startPoint.x, startPoint.y)
+            
+            // Find the screen containing the start point
+            let screen = NSScreen.screens.first { $0.frame.contains(startPoint) } ?? NSScreen.main!
+            let visibleFrame = screen.visibleFrame
+            
+            // Position to the LEFT of the selection start, vertically centered
+            var origin = CGPoint(
+                x: startPoint.x - size.width - Self.horizontalGap,
+                y: startPoint.y - size.height / 2
             )
-            showInternal(near: fallbackRect, state: state, size: size, offsetRight: true)
+            
+            // If overflows left edge, flip to RIGHT side
+            if origin.x < visibleFrame.minX + Self.screenEdgePadding {
+                origin.x = startPoint.x + Self.horizontalGap
+                NSLog("   Flipped to right side due to left overflow")
+            }
+            
+            // Handle vertical overflow
+            origin = handleVerticalOverflow(origin: origin, size: size, visibleFrame: visibleFrame)
+            
+            // Ensure horizontal bounds
+            origin.x = max(visibleFrame.minX + Self.screenEdgePadding,
+                           min(origin.x, visibleFrame.maxX - size.width - Self.screenEdgePadding))
+            
+            panel.setFrame(NSRect(origin: origin, size: size), display: false)
+            
+            switch state {
+            case .miniIcon:
+                buildMiniIconUI(size: size)
+            case .collapsed:
+                buildCollapsedUI(size: size)
+            default:
+                break
+            }
+            
+            panel.alphaValue = 0
+            panel.orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.15
+                panel.animator().alphaValue = 1
+            }
+            
+            addEventMonitors()
+            NSLog("   Tooltip shown at (%0.f, %0.f) using fallback positioning", origin.x, origin.y)
             return
         }
         

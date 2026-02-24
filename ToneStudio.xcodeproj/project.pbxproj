@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		63137D0B2F48900000C41B2E /* MenuBarExtraAccess in Frameworks */ = {isa = PBXBuildFile; productRef = 63137D0C2F48900000C41B2E /* MenuBarExtraAccess */; };
+		63137D102F4D000000C41B2E /* SelectedTextKit in Frameworks */ = {isa = PBXBuildFile; productRef = 63137D112F4D000000C41B2E /* SelectedTextKit */; };
+		63137D122F4D000100C41B2E /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = 63137D132F4D000100C41B2E /* HotKey */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +30,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				63137D0B2F48900000C41B2E /* MenuBarExtraAccess in Frameworks */,
+				63137D102F4D000000C41B2E /* SelectedTextKit in Frameworks */,
+				63137D122F4D000100C41B2E /* HotKey in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -71,6 +75,8 @@
 			name = ToneStudio;
 			packageProductDependencies = (
 				63137D0C2F48900000C41B2E /* MenuBarExtraAccess */,
+				63137D112F4D000000C41B2E /* SelectedTextKit */,
+				63137D132F4D000100C41B2E /* HotKey */,
 			);
 			productName = ToneStudio;
 			productReference = 63137CFD2F487ECB00C41B2E /* ToneStudio.app */;
@@ -104,6 +110,8 @@
 			productRefGroup = 63137CFE2F487ECB00C41B2E /* Products */;
 			packageReferences = (
 				63137D0D2F48900000C41B2E /* XCRemoteSwiftPackageReference "MenuBarExtraAccess" */,
+				63137D142F4D000000C41B2E /* XCRemoteSwiftPackageReference "SelectedTextKit" */,
+				63137D162F4D000100C41B2E /* XCRemoteSwiftPackageReference "HotKey" */,
 			);
 			projectDirPath = "";
 			projectRoot = "";
@@ -346,6 +354,22 @@
 				minimumVersion = 1.2.0;
 			};
 		};
+		63137D142F4D000000C41B2E /* XCRemoteSwiftPackageReference "SelectedTextKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/tisfeng/SelectedTextKit";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.6.0;
+			};
+		};
+		63137D162F4D000100C41B2E /* XCRemoteSwiftPackageReference "HotKey" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/soffes/HotKey";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.2.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -353,6 +377,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 63137D0D2F48900000C41B2E /* XCRemoteSwiftPackageReference "MenuBarExtraAccess" */;
 			productName = MenuBarExtraAccess;
+		};
+		63137D112F4D000000C41B2E /* SelectedTextKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 63137D142F4D000000C41B2E /* XCRemoteSwiftPackageReference "SelectedTextKit" */;
+			productName = SelectedTextKit;
+		};
+		63137D132F4D000100C41B2E /* HotKey */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 63137D162F4D000100C41B2E /* XCRemoteSwiftPackageReference "HotKey" */;
+			productName = HotKey;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

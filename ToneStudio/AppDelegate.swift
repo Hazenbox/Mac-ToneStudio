@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let permissionsManager = PermissionsManager()
     let selectionMonitor = SelectionMonitor()
     let tooltipWindow = TooltipWindow()
+    let editorWindow = EditorWindow()
     let rewriteService = RewriteService()
     let accessibilityManager = AccessibilityManager()
     let hotkeyManager = HotkeyManager()
@@ -14,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var selectedText: String = ""
     private var lastSelectionRect: CGRect = .zero
     private var currentTask: Task<Void, Never>?
+    private var editorTask: Task<Void, Never>?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let isTrusted = AXIsProcessTrusted()
@@ -42,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         selectionMonitor.stop()
         hotkeyManager.stop()
         currentTask?.cancel()
+        editorTask?.cancel()
     }
 
     // MARK: - Start monitoring
@@ -52,9 +55,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.handleSelection(result)
         }
         
-        hotkeyManager.start { [weak self] in
-            self?.handleHotkeyTrigger()
-        }
+        hotkeyManager.start(
+            callback: { [weak self] in
+                self?.handleHotkeyTrigger()
+            },
+            editorCallback: { [weak self] in
+                self?.handleEditorHotkey()
+            }
+        )
+        
+        setupEditorCallbacks()
         
         Logger.permissions.info("Selection monitoring active")
     }
@@ -223,6 +233,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard !Task.isCancelled else { return }
                 let message = (error as? RewriteService.RewriteError)?.errorDescription ?? error.localizedDescription
                 tooltipWindow.updateUI(.error(message))
+            }
+        }
+    }
+    
+    // MARK: - Editor
+    
+    private func handleEditorHotkey() {
+        // If editor is visible, toggle it off
+        if editorWindow.isVisible {
+            editorWindow.hide()
+            return
+        }
+        
+        // Try to get selected text to pre-fill
+        let text = getSelectedTextViaClipboard()
+        
+        if let text = text, !text.isEmpty, text.count >= AppConstants.minSelectionLength {
+            selectedText = text
+            editorWindow.showWithText(text)
+        } else {
+            editorWindow.show()
+        }
+    }
+    
+    func openEditor() {
+        handleEditorHotkey()
+    }
+    
+    private func setupEditorCallbacks() {
+        editorWindow.onGenerate = { [weak self] text, prompt in
+            self?.performEditorRewrite(text: text, prompt: prompt)
+        }
+        
+        editorWindow.onCopy = { [weak self] text in
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            Logger.editor.info("Copied result to clipboard")
+        }
+        
+        editorWindow.onReplace = { [weak self] text in
+            self?.accessibilityManager.replaceSelectedText(with: text)
+            Logger.editor.info("Replaced selected text")
+        }
+    }
+    
+    private func performEditorRewrite(text: String, prompt: String) {
+        editorTask?.cancel()
+        
+        editorWindow.updateState(.loading)
+        
+        editorTask = Task {
+            do {
+                let result = try await rewriteService.rewrite(text: text, prompt: prompt.isEmpty ? nil : prompt)
+                guard !Task.isCancelled else { return }
+                editorWindow.updateState(.result(result))
+            } catch is CancellationError {
+                // User cancelled
+            } catch {
+                guard !Task.isCancelled else { return }
+                let message = (error as? RewriteService.RewriteError)?.errorDescription ?? error.localizedDescription
+                editorWindow.updateState(.error(message))
             }
         }
     }

@@ -8,10 +8,13 @@ struct MenuBarView: View {
     @State private var apiKeyText = ""
     
     var onRestartMonitoring: (() -> Void)?
+    var onOpenEditor: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             statusSection
+            Divider()
+            editorSection
             Divider()
             shortcutSection
             Divider()
@@ -43,19 +46,41 @@ struct MenuBarView: View {
         .padding(.vertical, 4)
     }
     
+    // MARK: - Editor
+    
+    private var editorSection: some View {
+        Button {
+            onOpenEditor?()
+        } label: {
+            HStack {
+                Image(systemName: "square.and.pencil")
+                Text("open editor")
+                Spacer()
+                Text("⌘⇧J")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+    }
+    
     // MARK: - Shortcut
     
     private var shortcutSection: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "keyboard")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-            Text("shortcut")
-                .font(.system(size: 12))
-            Spacer()
-            Text("Cmd+Option+J")
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "keyboard")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Text("quick rephrase")
+                    .font(.system(size: 12))
+                Spacer()
+                Text("⌘⌥J")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)

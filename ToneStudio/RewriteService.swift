@@ -36,7 +36,7 @@ actor RewriteService {
         }
     }
 
-    func rewrite(text: String) async throws -> String {
+    func rewrite(text: String, prompt: String? = nil) async throws -> String {
         let apiKey = KeychainHelper.load() ?? ""
 
         var request = URLRequest(url: URL(string: AppConstants.rewriteBaseURL + AppConstants.rewriteEndpoint)!)
@@ -47,10 +47,15 @@ actor RewriteService {
             request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         }
 
-        let body: [String: String] = ["text": text, "style": "professional"]
+        var body: [String: String] = ["text": text]
+        if let prompt = prompt, !prompt.isEmpty {
+            body["prompt"] = prompt
+        } else {
+            body["style"] = "professional"
+        }
         request.httpBody = try JSONEncoder().encode(body)
 
-        Logger.rewrite.info("Sending rewrite request (\(text.count) chars)")
+        Logger.rewrite.info("Sending rewrite request (\(text.count) chars, prompt: \(prompt ?? "none"))")
 
         let (data, response): (Data, URLResponse)
         do {

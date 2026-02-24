@@ -40,6 +40,22 @@ struct SelectionResult {
         )
         return distance < 10
     }
+    
+    /// The visual left edge of the selection (min X of start/end points)
+    /// This handles both left-to-right and right-to-left drag selections
+    var visualLeftEdgePoint: CGPoint {
+        if hasPreciseBounds {
+            return CGPoint(x: firstLineBounds.minX, y: firstLineBounds.midY)
+        } else {
+            // Use the leftmost point between start and end
+            let leftX = min(selectionStartPoint.x, fallbackPoint.x)
+            // Use the Y from the point with the smaller X
+            let leftY = selectionStartPoint.x < fallbackPoint.x
+                ? selectionStartPoint.y
+                : fallbackPoint.y
+            return CGPoint(x: leftX, y: leftY)
+        }
+    }
 }
 
 @MainActor

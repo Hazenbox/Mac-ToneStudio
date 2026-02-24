@@ -223,14 +223,18 @@ final class TooltipWindow {
         // CRITICAL: If we don't have precise bounds (AX API failed for Electron/browser),
         // use fallback positioning based on mouse positions
         guard selection.hasPreciseBounds else {
-            let clickPoint = selection.selectionStartPoint
             let isDoubleClick = selection.isDoubleClickSelection
+            // For drag selections, use the visual left edge (handles both L-to-R and R-to-L drags)
+            // For double-click, use the click point directly
+            let anchorPoint = isDoubleClick ? selection.selectionStartPoint : selection.visualLeftEdgePoint
             
-            NSLog("⚠️ Using fallback positioning: isDoubleClick=%d, clickPoint=(%0.f, %0.f)",
-                  isDoubleClick ? 1 : 0, clickPoint.x, clickPoint.y)
+            NSLog("⚠️ Using fallback positioning: isDoubleClick=%d, anchorPoint=(%0.f, %0.f), startPt=(%0.f, %0.f), endPt=(%0.f, %0.f)",
+                  isDoubleClick ? 1 : 0, anchorPoint.x, anchorPoint.y,
+                  selection.selectionStartPoint.x, selection.selectionStartPoint.y,
+                  selection.fallbackPoint.x, selection.fallbackPoint.y)
             
-            // Find the screen containing the click point
-            let screen = NSScreen.screens.first { $0.frame.contains(clickPoint) } ?? NSScreen.main!
+            // Find the screen containing the anchor point
+            let screen = NSScreen.screens.first { $0.frame.contains(anchorPoint) } ?? NSScreen.main!
             let visibleFrame = screen.visibleFrame
             
             var origin: CGPoint
@@ -239,27 +243,28 @@ final class TooltipWindow {
                 // DOUBLE-CLICK: Position to the RIGHT of the click point
                 // This feels natural as the tooltip appears where user's attention is
                 origin = CGPoint(
-                    x: clickPoint.x + Self.horizontalGap + 10,  // Slight offset to clear the word
-                    y: clickPoint.y - size.height / 2
+                    x: anchorPoint.x + Self.horizontalGap + 10,  // Slight offset to clear the word
+                    y: anchorPoint.y - size.height / 2
                 )
                 NSLog("   Double-click detected: positioning to RIGHT of click")
                 
                 // If overflows right edge, flip to LEFT side
                 if origin.x + size.width > visibleFrame.maxX - Self.screenEdgePadding {
-                    origin.x = clickPoint.x - size.width - Self.horizontalGap - 10
+                    origin.x = anchorPoint.x - size.width - Self.horizontalGap - 10
                     NSLog("   Flipped to left side due to right overflow")
                 }
             } else {
-                // DRAG SELECTION: Position to the LEFT of the selection start
+                // DRAG SELECTION: Position to the LEFT of the visual left edge
+                // visualLeftEdgePoint already handles both L-to-R and R-to-L selections
                 origin = CGPoint(
-                    x: clickPoint.x - size.width - Self.horizontalGap,
-                    y: clickPoint.y - size.height / 2
+                    x: anchorPoint.x - size.width - Self.horizontalGap,
+                    y: anchorPoint.y - size.height / 2
                 )
-                NSLog("   Drag selection: positioning to LEFT of start")
+                NSLog("   Drag selection: positioning to LEFT of visual left edge")
                 
                 // If overflows left edge, flip to RIGHT side
                 if origin.x < visibleFrame.minX + Self.screenEdgePadding {
-                    origin.x = clickPoint.x + Self.horizontalGap
+                    origin.x = anchorPoint.x + Self.horizontalGap
                     NSLog("   Flipped to right side due to left overflow")
                 }
             }

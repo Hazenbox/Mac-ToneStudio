@@ -18,24 +18,21 @@ final class HotkeyManager {
         monitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return }
             
-            // J key = keyCode 38
-            guard event.keyCode == 38 else { return }
-            
             let hasCmd = event.modifierFlags.contains(.command)
             let hasOption = event.modifierFlags.contains(.option)
             let hasShift = event.modifierFlags.contains(.shift)
             let hasControl = event.modifierFlags.contains(.control)
             
-            // Cmd+Option+J (no shift, no control) - Quick rephrase
-            if hasCmd && hasOption && !hasShift && !hasControl {
+            // T key = keyCode 17: Cmd+Option+T - Quick rephrase
+            if event.keyCode == 17 && hasCmd && hasOption && !hasShift && !hasControl {
                 DispatchQueue.main.async {
                     self.onTrigger?()
                 }
                 return
             }
             
-            // Cmd+Shift+J (no option, no control) - Open editor
-            if hasCmd && hasShift && !hasOption && !hasControl {
+            // J key = keyCode 38: Cmd+Shift+J - Open editor
+            if event.keyCode == 38 && hasCmd && hasShift && !hasOption && !hasControl {
                 DispatchQueue.main.async {
                     self.onEditorTrigger?()
                 }
@@ -43,7 +40,7 @@ final class HotkeyManager {
             }
         }
         
-        Logger.hotkey.info("HotkeyManager started (Cmd+Option+J for rephrase, Cmd+Shift+J for editor)")
+        Logger.hotkey.info("HotkeyManager started (Cmd+Option+T for rephrase, Cmd+Shift+J for editor)")
     }
     
     func stop() {

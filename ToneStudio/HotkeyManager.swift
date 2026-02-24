@@ -1,5 +1,5 @@
 import Cocoa
-import Carbon
+import HotKey
 import OSLog
 
 @MainActor
@@ -7,7 +7,9 @@ final class HotkeyManager {
     
     typealias HotkeyCallback = () -> Void
     
-    private var monitor: Any?
+    private var rephraseHotKey: HotKey?
+    private var editorHotKey: HotKey?
+    
     var onTrigger: HotkeyCallback?
     var onEditorTrigger: HotkeyCallback?
     
@@ -15,28 +17,19 @@ final class HotkeyManager {
         self.onTrigger = callback
         self.onEditorTrigger = editorCallback
         
-        monitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self else { return }
-            
-            let hasCmd = event.modifierFlags.contains(.command)
-            let hasOption = event.modifierFlags.contains(.option)
-            let hasShift = event.modifierFlags.contains(.shift)
-            let hasControl = event.modifierFlags.contains(.control)
-            
-            // R key = keyCode 15: Control+Option+R - Quick rephrase
-            if event.keyCode == 15 && !hasCmd && hasOption && !hasShift && hasControl {
-                DispatchQueue.main.async {
-                    self.onTrigger?()
-                }
-                return
+        // Control+Option+R for quick rephrase
+        rephraseHotKey = HotKey(key: .r, modifiers: [.control, .option])
+        rephraseHotKey?.keyDownHandler = { [weak self] in
+            DispatchQueue.main.async {
+                self?.onTrigger?()
             }
-            
-            // J key = keyCode 38: Cmd+Shift+J - Open editor
-            if event.keyCode == 38 && hasCmd && hasShift && !hasOption && !hasControl {
-                DispatchQueue.main.async {
-                    self.onEditorTrigger?()
-                }
-                return
+        }
+        
+        // Cmd+Shift+J for editor
+        editorHotKey = HotKey(key: .j, modifiers: [.command, .shift])
+        editorHotKey?.keyDownHandler = { [weak self] in
+            DispatchQueue.main.async {
+                self?.onEditorTrigger?()
             }
         }
         
@@ -44,10 +37,8 @@ final class HotkeyManager {
     }
     
     func stop() {
-        if let monitor = monitor {
-            NSEvent.removeMonitor(monitor)
-            self.monitor = nil
-        }
+        rephraseHotKey = nil
+        editorHotKey = nil
         onTrigger = nil
         onEditorTrigger = nil
         Logger.hotkey.info("HotkeyManager stopped")

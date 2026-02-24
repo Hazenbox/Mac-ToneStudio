@@ -1,6 +1,15 @@
 import SwiftUI
 import ServiceManagement
 
+// MARK: - No Hover Button Style
+
+struct NoHoverButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .contentShape(Rectangle())
+    }
+}
+
 struct MenuBarView: View {
     @EnvironmentObject var permissionsManager: PermissionsManager
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
@@ -9,97 +18,102 @@ struct MenuBarView: View {
     
     var onRestartMonitoring: (() -> Void)?
     var onOpenEditor: (() -> Void)?
+    
+    private let iconLabelSpacing: CGFloat = 8
+    private let horizontalPadding: CGFloat = 10
+    private let verticalPadding: CGFloat = 6
+    private let iconSize: CGFloat = 12
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             statusSection
+            
             Divider()
-            editorSection
+            
+            actionsSection
+            
             Divider()
-            shortcutSection
+            
+            configurationSection
+            
             Divider()
-            apiKeySection
-            Divider()
-            settingsSection
-            Divider()
-            quitSection
+            
+            utilitiesSection
         }
-        .padding(4)
+        .padding(6)
         .frame(width: 240)
     }
 
     // MARK: - Status
 
     private var statusSection: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: iconLabelSpacing) {
             Circle()
                 .fill(permissionsManager.isAccessibilityGranted ? .green : .yellow)
                 .frame(width: 8, height: 8)
-            Text(permissionsManager.isAccessibilityGranted ? "active" : "needs permission")
-                .font(.system(size: 12))
+            Text(permissionsManager.isAccessibilityGranted ? "Active" : "Needs Permission")
+                .font(.system(size: iconSize))
             Spacer()
             Text("v1.0")
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, horizontalPadding)
+        .padding(.vertical, verticalPadding)
     }
     
-    // MARK: - Editor
+    // MARK: - Actions (Open Editor, Quick Rephrase)
     
-    private var editorSection: some View {
-        Button {
-            onOpenEditor?()
-        } label: {
-            HStack {
-                Image(systemName: "square.and.pencil")
-                Text("open editor")
-                Spacer()
-                Text("⌘⇧J")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-    }
-    
-    // MARK: - Shortcut
-    
-    private var shortcutSection: some View {
+    private var actionsSection: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
+            Button {
+                onOpenEditor?()
+            } label: {
+                HStack(spacing: iconLabelSpacing) {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: iconSize))
+                    Text("Open Editor")
+                        .font(.system(size: iconSize))
+                    Spacer()
+                    Text("⌘⇧J")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(NoHoverButtonStyle())
+            .padding(.horizontal, horizontalPadding)
+            .padding(.vertical, verticalPadding)
+            
+            HStack(spacing: iconLabelSpacing) {
                 Image(systemName: "keyboard")
-                    .font(.system(size: 11))
+                    .font(.system(size: iconSize))
                     .foregroundStyle(.secondary)
-                Text("quick rephrase")
-                    .font(.system(size: 12))
+                Text("Quick Rephrase")
+                    .font(.system(size: iconSize))
                 Spacer()
                 Text("⌘⌥J")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
+            .padding(.horizontal, horizontalPadding)
+            .padding(.vertical, verticalPadding)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
     }
 
-    // MARK: - API Key
+    // MARK: - Configuration (API Key, Launch at Login)
 
-    private var apiKeySection: some View {
-        Group {
+    private var configurationSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
             if showingApiKeyInput {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("api key")
+                    Text("API Key")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
-                    HStack {
-                        SecureField("enter api key", text: $apiKeyText)
+                    HStack(spacing: iconLabelSpacing) {
+                        SecureField("Enter API Key", text: $apiKeyText)
                             .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 12))
-                        Button("save") {
+                            .font(.system(size: iconSize))
+                        Button("Save") {
                             if !apiKeyText.isEmpty {
                                 KeychainHelper.save(key: apiKeyText)
                                 showingApiKeyInput = false
@@ -108,16 +122,18 @@ struct MenuBarView: View {
                         .controlSize(.small)
                     }
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+                .padding(.horizontal, horizontalPadding)
+                .padding(.vertical, verticalPadding)
             } else {
                 Button {
                     apiKeyText = KeychainHelper.load() ?? ""
                     showingApiKeyInput = true
                 } label: {
-                    HStack {
+                    HStack(spacing: iconLabelSpacing) {
                         Image(systemName: "key")
-                        Text("configure api key...")
+                            .font(.system(size: iconSize))
+                        Text("Configure API Key...")
+                            .font(.system(size: iconSize))
                         Spacer()
                         if KeychainHelper.load() != nil {
                             Image(systemName: "checkmark.circle.fill")
@@ -126,68 +142,74 @@ struct MenuBarView: View {
                         }
                     }
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+                .buttonStyle(NoHoverButtonStyle())
+                .padding(.horizontal, horizontalPadding)
+                .padding(.vertical, verticalPadding)
             }
-        }
-    }
-
-    // MARK: - Settings
-
-    private var settingsSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Toggle("launch at login", isOn: $launchAtLogin)
+            
+            Toggle("Launch at Login", isOn: $launchAtLogin)
                 .toggleStyle(.switch)
                 .controlSize(.small)
-                .font(.system(size: 12))
+                .font(.system(size: iconSize))
                 .onChange(of: launchAtLogin) { _, newValue in
                     toggleLaunchAtLogin(newValue)
                 }
+                .padding(.horizontal, horizontalPadding)
+                .padding(.vertical, verticalPadding)
+        }
+    }
 
+    // MARK: - Utilities (Restart Monitoring, Grant Accessibility, Quit)
+
+    private var utilitiesSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
             if !permissionsManager.isAccessibilityGranted {
                 Button {
                     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
                         NSWorkspace.shared.open(url)
                     }
                 } label: {
-                    HStack {
+                    HStack(spacing: iconLabelSpacing) {
                         Image(systemName: "lock.shield")
-                        Text("grant accessibility...")
+                            .font(.system(size: iconSize))
+                        Text("Grant Accessibility...")
+                            .font(.system(size: iconSize))
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(NoHoverButtonStyle())
                 .foregroundStyle(.orange)
+                .padding(.horizontal, horizontalPadding)
+                .padding(.vertical, verticalPadding)
             }
             
             Button {
                 onRestartMonitoring?()
             } label: {
-                HStack {
+                HStack(spacing: iconLabelSpacing) {
                     Image(systemName: "arrow.clockwise")
-                    Text("restart monitoring")
+                        .font(.system(size: iconSize))
+                    Text("Restart Monitoring")
+                        .font(.system(size: iconSize))
                 }
             }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-    }
-
-    // MARK: - Quit
-
-    private var quitSection: some View {
-        Button {
-            NSApplication.shared.terminate(nil)
-        } label: {
-            HStack {
-                Image(systemName: "power")
-                Text("quit tone studio")
+            .buttonStyle(NoHoverButtonStyle())
+            .padding(.horizontal, horizontalPadding)
+            .padding(.vertical, verticalPadding)
+            
+            Button {
+                NSApplication.shared.terminate(nil)
+            } label: {
+                HStack(spacing: iconLabelSpacing) {
+                    Image(systemName: "power")
+                        .font(.system(size: iconSize))
+                    Text("Quit Tone Studio")
+                        .font(.system(size: iconSize))
+                }
             }
+            .buttonStyle(NoHoverButtonStyle())
+            .padding(.horizontal, horizontalPadding)
+            .padding(.vertical, verticalPadding)
         }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
     }
 
     // MARK: - Launch at login

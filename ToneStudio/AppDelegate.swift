@@ -58,6 +58,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         
         Logger.permissions.info("Selection monitoring active")
     }
+    
+    func restartMonitoring() {
+        Logger.permissions.info("Manually restarting monitoring...")
+        selectionMonitor.stop()
+        hotkeyManager.stop()
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.startMonitoring()
+        }
+    }
 
     // MARK: - Selection handling
 

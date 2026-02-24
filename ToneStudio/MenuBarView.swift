@@ -6,6 +6,8 @@ struct MenuBarView: View {
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var showingApiKeyInput = false
     @State private var apiKeyText = ""
+    
+    var onRestartMonitoring: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -132,6 +134,16 @@ struct MenuBarView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.orange)
             }
+            
+            Button {
+                onRestartMonitoring?()
+            } label: {
+                HStack {
+                    Image(systemName: "arrow.clockwise")
+                    Text("restart monitoring")
+                }
+            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)

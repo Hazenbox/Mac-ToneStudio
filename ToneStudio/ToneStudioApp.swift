@@ -6,8 +6,10 @@ struct ToneStudioApp: App {
 
     var body: some Scene {
         MenuBarExtra("Tone Studio", systemImage: "text.bubble") {
-            MenuBarView()
-                .environmentObject(appDelegate.permissionsManager)
+            MenuBarView(onRestartMonitoring: {
+                appDelegate.restartMonitoring()
+            })
+            .environmentObject(appDelegate.permissionsManager)
         }
         .menuBarExtraStyle(.window)
     }

@@ -1,5 +1,6 @@
 import Cocoa
 import OSLog
+import IOKit.hid
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -23,15 +24,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let isTrusted = AXIsProcessTrusted()
-        Logger.permissions.info("App launched — AXIsProcessTrusted: \(isTrusted)")
+        let inputMonitoringStatus = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent)
+        let hasInputMonitoring = (inputMonitoringStatus == kIOHIDAccessTypeGranted)
+        
+        Logger.permissions.info("App launched — Accessibility: \(isTrusted), Input Monitoring: \(hasInputMonitoring)")
         
         // Register macOS Services
         registerServices()
         
-        if isTrusted {
+        // Check both permissions
+        let hasAllPermissions = isTrusted && hasInputMonitoring
+        
+        if hasAllPermissions {
             startMonitoring()
         } else {
-            permissionsManager.openAccessibilitySettingsDirectly()
+            // Request missing permissions
+            if !hasInputMonitoring {
+                Logger.permissions.info("Requesting Input Monitoring permission...")
+                _ = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
+            }
+            
+            if !isTrusted {
+                permissionsManager.openAccessibilitySettingsDirectly()
+            } else {
+                permissionsManager.openInputMonitoringSettings()
+            }
+            
             permissionsManager.startPolling()
         }
 

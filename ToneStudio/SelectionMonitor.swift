@@ -2,6 +2,7 @@ import Cocoa
 import ApplicationServices
 import OSLog
 import SelectedTextKit
+import IOKit.hid
 
 struct SelectionResult {
     let text: String
@@ -18,18 +19,38 @@ final class SelectionMonitor {
     private var machPort: CFMachPort?
     private var pendingWork: DispatchWorkItem?
     private var lastMousePosition: CGPoint = .zero
+    private var healthCheckTimer: Timer?
     
     private let textManager = SelectedTextManager.shared
 
     func start(callback: @escaping SelectionCallback) {
         self.callback = callback
+        
         let isTrusted = AXIsProcessTrusted()
-        Logger.selection.info("SelectionMonitor starting — AXIsProcessTrusted: \(isTrusted)")
-        startEventTap()
+        let inputMonitoringStatus = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent)
+        let hasInputMonitoring = (inputMonitoringStatus == kIOHIDAccessTypeGranted)
+        
+        Logger.selection.info("SelectionMonitor starting — AXIsProcessTrusted: \(isTrusted), InputMonitoring: \(hasInputMonitoring) (status: \(inputMonitoringStatus.rawValue))")
+        
+        if !hasInputMonitoring {
+            Logger.selection.warning("Input Monitoring permission not granted - requesting...")
+            let granted = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
+            Logger.selection.info("Input Monitoring request result: \(granted)")
+        }
+        
+        // Delay tap installation slightly to help with Launch Services timing issues
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.startEventTap()
+        }
+        
         observeSessionChanges()
+        startHealthChecks()
     }
 
     func stop() {
+        healthCheckTimer?.invalidate()
+        healthCheckTimer = nil
+        
         if let port = machPort {
             CGEvent.tapEnable(tap: port, enable: false)
             CFMachPortInvalidate(port)
@@ -41,6 +62,59 @@ final class SelectionMonitor {
         pendingWork = nil
         callback = nil
         Logger.selection.info("SelectionMonitor stopped")
+    }
+    
+    // MARK: - Health Checks (verify tap is still working)
+    
+    private func startHealthChecks() {
+        healthCheckTimer?.invalidate()
+        healthCheckTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            MainActor.assumeIsolated {
+                self.verifyTapHealth()
+            }
+        }
+        Logger.selection.info("Started tap health checks (every 5s)")
+    }
+    
+    private func verifyTapHealth() {
+        guard let port = machPort else {
+            Logger.selection.warning("Health check: No event tap exists, reinstalling...")
+            reinstallEventTap()
+            return
+        }
+        
+        if !CGEvent.tapIsEnabled(tap: port) {
+            Logger.selection.warning("Health check: Tap is disabled, attempting to re-enable...")
+            CGEvent.tapEnable(tap: port, enable: true)
+            
+            // Check again after re-enable attempt
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self, let currentPort = self.machPort else { return }
+                if !CGEvent.tapIsEnabled(tap: currentPort) {
+                    Logger.selection.error("Health check: Tap still disabled after re-enable, reinstalling...")
+                    self.reinstallEventTap()
+                } else {
+                    Logger.selection.info("Health check: Tap successfully re-enabled")
+                }
+            }
+        }
+    }
+    
+    private func reinstallEventTap() {
+        Logger.selection.info("Reinstalling event tap...")
+        
+        if let port = machPort {
+            CGEvent.tapEnable(tap: port, enable: false)
+            CFMachPortInvalidate(port)
+        }
+        machPort = nil
+        tapThread?.cancel()
+        tapThread = nil
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.startEventTap()
+        }
     }
 
     // MARK: - CGEventTap (runs on background thread)

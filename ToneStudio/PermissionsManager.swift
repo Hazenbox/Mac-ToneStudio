@@ -1,10 +1,12 @@
 import Cocoa
 import OSLog
 import Combine
+import IOKit.hid
 
 @MainActor
 final class PermissionsManager: ObservableObject {
     @Published private(set) var isAccessibilityGranted = false
+    @Published private(set) var isInputMonitoringGranted = false
 
     private var pollTimer: Timer?
 
@@ -12,6 +14,28 @@ final class PermissionsManager: ObservableObject {
         let trusted = AXIsProcessTrusted()
         isAccessibilityGranted = trusted
         return trusted
+    }
+    
+    func checkInputMonitoring() -> Bool {
+        let status = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent)
+        let granted = (status == kIOHIDAccessTypeGranted)
+        isInputMonitoringGranted = granted
+        Logger.permissions.info("Input Monitoring check — status: \(status.rawValue), granted: \(granted)")
+        return granted
+    }
+    
+    func requestInputMonitoring() -> Bool {
+        let granted = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
+        isInputMonitoringGranted = granted
+        Logger.permissions.info("Input Monitoring requested — granted: \(granted)")
+        return granted
+    }
+    
+    func checkAllPermissions() -> Bool {
+        let accessibility = checkAccessibility()
+        let inputMonitoring = checkInputMonitoring()
+        Logger.permissions.info("Permissions check — Accessibility: \(accessibility), Input Monitoring: \(inputMonitoring)")
+        return accessibility && inputMonitoring
     }
 
     func requestAccessibility() {
@@ -92,6 +116,27 @@ final class PermissionsManager: ObservableObject {
         _ = AXIsProcessTrustedWithOptions(options)
         // Also open System Settings to the Accessibility pane so user can toggle it on
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+    
+    func openInputMonitoringSettings() {
+        // Request Input Monitoring permission (this will trigger the system dialog)
+        _ = requestInputMonitoring()
+        // Also open System Settings to the Input Monitoring pane
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+    
+    func openAllPermissionSettings() {
+        // Request both permissions
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+        _ = AXIsProcessTrustedWithOptions(options)
+        _ = requestInputMonitoring()
+        
+        // Open Privacy & Security pane
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy") {
             NSWorkspace.shared.open(url)
         }
     }

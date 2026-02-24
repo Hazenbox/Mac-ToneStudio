@@ -214,13 +214,19 @@ final class TooltipWindow {
     private func showAtSelectionStart(selection: SelectionResult, state: TooltipState, size: NSSize) {
         cancelAutoHideTimer()
         
+        NSLog("🎯 showAtSelectionStart: hasPreciseBounds=%d, selectionStart=(%0.f, %0.f), firstLineBounds=(%0.f, %0.f, %0.f, %0.f)",
+              selection.hasPreciseBounds ? 1 : 0,
+              selection.selectionStartPoint.x, selection.selectionStartPoint.y,
+              selection.firstLineBounds.origin.x, selection.firstLineBounds.origin.y,
+              selection.firstLineBounds.width, selection.firstLineBounds.height)
+        
         // CRITICAL: If we don't have precise bounds (AX API failed for Electron/browser),
-        // fall back to mouse-based positioning to the RIGHT of the cursor
+        // fall back to selection START position (where user began selecting)
         guard selection.hasPreciseBounds else {
-            Logger.tooltip.info("Using mouse-based fallback positioning (AX bounds invalid)")
+            NSLog("⚠️ Using selection START position for fallback at (%0.f, %0.f)", selection.selectionStartPoint.x, selection.selectionStartPoint.y)
             let fallbackRect = CGRect(
-                x: selection.fallbackPoint.x,
-                y: selection.fallbackPoint.y,
+                x: selection.selectionStartPoint.x,
+                y: selection.selectionStartPoint.y,
                 width: 1,
                 height: selection.lineHeight
             )

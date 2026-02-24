@@ -106,9 +106,13 @@ final class AccessibilityManager {
     private func isValidSelectionBounds(_ rect: CGRect, mousePosition: CGPoint) -> Bool {
         let screenHeight = NSScreen.main?.frame.height ?? 900
         
+        NSLog("🔍 Validating bounds: rect=(%0.f, %0.f, %0.f, %0.f), mouse=(%0.f, %0.f), screenH=%0.f",
+              rect.origin.x, rect.origin.y, rect.width, rect.height,
+              mousePosition.x, mousePosition.y, screenHeight)
+        
         // Check 1: Non-zero dimensions
         guard rect.width > 0 && rect.height > 5 else {
-            Logger.accessibility.debug("Bounds invalid: zero/tiny dimensions (\(rect.width)x\(rect.height))")
+            NSLog("❌ Bounds INVALID: zero/tiny dimensions (%0.fx%0.f)", rect.width, rect.height)
             return false
         }
         
@@ -118,7 +122,7 @@ final class AccessibilityManager {
         // Top-left corner check (after coordinate conversion)
         let nearTopLeft = rect.origin.x < 50 && rect.origin.y > screenHeight - 100
         if nearBottomLeft || nearTopLeft {
-            Logger.accessibility.debug("Bounds invalid: near screen corner (origin: \(rect.origin.x), \(rect.origin.y))")
+            NSLog("❌ Bounds INVALID: near screen corner (origin: %0.f, %0.f)", rect.origin.x, rect.origin.y)
             return false
         }
         
@@ -127,7 +131,7 @@ final class AccessibilityManager {
             screen.frame.intersects(rect)
         }
         guard isOnAnyScreen else {
-            Logger.accessibility.debug("Bounds invalid: not on any visible screen")
+            NSLog("❌ Bounds INVALID: not on any visible screen")
             return false
         }
         
@@ -135,7 +139,7 @@ final class AccessibilityManager {
         // If AX bounds are > 400px away from mouse, something is wrong
         let distanceToMouse = hypot(rect.midX - mousePosition.x, rect.midY - mousePosition.y)
         if distanceToMouse > 400 {
-            Logger.accessibility.debug("Bounds invalid: too far from mouse position (\(Int(distanceToMouse))px)")
+            NSLog("❌ Bounds INVALID: too far from mouse (%0.fpx)", distanceToMouse)
             return false
         }
         
@@ -144,12 +148,12 @@ final class AccessibilityManager {
             let screenArea = mainScreen.frame.width * mainScreen.frame.height
             let boundsArea = rect.width * rect.height
             if boundsArea > screenArea * 0.25 {
-                Logger.accessibility.debug("Bounds invalid: too large (\(Int(boundsArea)) > 25% of screen)")
+                NSLog("❌ Bounds INVALID: too large (%0.f > 25%% of screen)", boundsArea)
                 return false
             }
         }
         
-        Logger.accessibility.debug("Bounds valid: \(String(describing: rect)), distance to mouse: \(Int(distanceToMouse))px")
+        NSLog("✅ Bounds VALID: distance to mouse = %0.fpx", distanceToMouse)
         return true
     }
     

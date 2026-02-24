@@ -8,7 +8,8 @@ struct SelectionResult {
     let text: String
     let selectionBounds: CGRect      // Full selection bounds (from AX API or fallback)
     let firstLineBounds: CGRect      // Bounds of first line (for multi-line selections)
-    let fallbackPoint: CGPoint       // Mouse position as fallback
+    let fallbackPoint: CGPoint       // Mouse-up position (end of selection)
+    let selectionStartPoint: CGPoint // Mouse-down position (start of selection)
     let hasPreciseBounds: Bool       // Whether we got real AX bounds or using fallback
     
     /// The position where tooltip should appear (left edge of first line)
@@ -20,8 +21,8 @@ struct SelectionResult {
                 y: firstLineBounds.midY
             )
         } else {
-            // Fallback to mouse position
-            return fallbackPoint
+            // Fallback to selection start position (where user began selecting)
+            return selectionStartPoint
         }
     }
     
@@ -40,7 +41,8 @@ final class SelectionMonitor {
     private var tapThread: Thread?
     private var machPort: CFMachPort?
     private var pendingWork: DispatchWorkItem?
-    private var lastMousePosition: CGPoint = .zero
+    private var lastMousePosition: CGPoint = .zero      // Mouse-up position (end of selection)
+    private var lastMouseDownPosition: CGPoint = .zero  // Mouse-down position (start of selection)
     private var healthCheckTimer: Timer?
     
     private let textManager = SelectedTextManager.shared
@@ -152,7 +154,11 @@ final class SelectionMonitor {
         
         let monitor = self
         let thread = Thread {
-            let mask = CGEventMask(1 << CGEventType.leftMouseUp.rawValue)
+            // Track both mouse-down (selection start) and mouse-up (selection end)
+            let mask = CGEventMask(
+                (1 << CGEventType.leftMouseDown.rawValue) |
+                (1 << CGEventType.leftMouseUp.rawValue)
+            )
 
             let refcon = Unmanaged.passUnretained(monitor).toOpaque()
             guard let tap = CGEvent.tapCreate(
@@ -172,8 +178,16 @@ final class SelectionMonitor {
                         return Unmanaged.passRetained(event)
                     }
 
+                    // Track mouse-down position (where selection starts)
+                    if type == .leftMouseDown {
+                        let mousePos = event.location
+                        DispatchQueue.main.async {
+                            monitor.handleMouseDown(mousePosition: mousePos)
+                        }
+                    }
+
+                    // Track mouse-up position (where selection ends)
                     if type == .leftMouseUp {
-                        NSLog("👁️ Mouse up detected!")
                         let mousePos = event.location
                         DispatchQueue.main.async {
                             monitor.handleMouseUp(mousePosition: mousePos)
@@ -249,7 +263,12 @@ final class SelectionMonitor {
         Logger.selection.info("Re-enabled event tap after session became active")
     }
 
-    // MARK: - Debounce
+    // MARK: - Mouse Event Handling
+
+    private func handleMouseDown(mousePosition: CGPoint) {
+        // Store where the selection started (mouse-down position)
+        lastMouseDownPosition = mousePosition
+    }
 
     private func handleMouseUp(mousePosition: CGPoint) {
         lastMousePosition = mousePosition
@@ -288,29 +307,32 @@ final class SelectionMonitor {
                     return
                 }
                 
-                let appKitMousePos = cgPointToAppKit(lastMousePosition)
+                let appKitMouseUpPos = cgPointToAppKit(lastMousePosition)
+                let appKitMouseDownPos = cgPointToAppKit(lastMouseDownPosition)
                 
                 // Try to get precise selection bounds from Accessibility API
                 // Pass mouse position for validation (to detect invalid AX bounds from Electron apps)
                 let result: SelectionResult
-                if let bounds = accessibilityManager.getSelectionBounds(mousePosition: appKitMousePos) {
+                if let bounds = accessibilityManager.getSelectionBounds(mousePosition: appKitMouseUpPos) {
                     Logger.selection.info("Got VALID precise selection bounds: \(String(describing: bounds.rect))")
                     result = SelectionResult(
                         text: trimmedText,
                         selectionBounds: bounds.rect,
                         firstLineBounds: bounds.firstLineRect,
-                        fallbackPoint: appKitMousePos,
+                        fallbackPoint: appKitMouseUpPos,
+                        selectionStartPoint: appKitMouseDownPos,
                         hasPreciseBounds: true
                     )
                 } else {
-                    // Fallback to mouse position (AX bounds were nil or invalid)
-                    Logger.selection.info("Using mouse position as fallback (AX bounds invalid or unavailable)")
-                    let fallbackRect = CGRect(x: appKitMousePos.x, y: appKitMousePos.y, width: 1, height: 20)
+                    // Fallback to mouse-down position (where selection started)
+                    Logger.selection.info("Using selection start position as fallback (AX bounds invalid or unavailable)")
+                    let fallbackRect = CGRect(x: appKitMouseDownPos.x, y: appKitMouseDownPos.y, width: 1, height: 20)
                     result = SelectionResult(
                         text: trimmedText,
                         selectionBounds: fallbackRect,
                         firstLineBounds: fallbackRect,
-                        fallbackPoint: appKitMousePos,
+                        fallbackPoint: appKitMouseUpPos,
+                        selectionStartPoint: appKitMouseDownPos,
                         hasPreciseBounds: false
                     )
                 }

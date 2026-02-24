@@ -160,9 +160,10 @@ final class SelectionMonitor {
             return
         }
 
-        let mousePos = NSEvent.mouseLocation
-        let selectionRect = CGRect(x: mousePos.x, y: mousePos.y, width: 1, height: 1)
+        let appKitMousePos = cgPointToAppKit(lastMousePosition)
+        let selectionRect = CGRect(x: appKitMousePos.x, y: appKitMousePos.y, width: 1, height: 1)
 
+        Logger.selection.info("Mouse-up at CG(\(self.lastMousePosition.x), \(self.lastMousePosition.y)) -> AppKit(\(appKitMousePos.x), \(appKitMousePos.y))")
         callback?(SelectionResult(text: text, screenRect: selectionRect))
     }
 
@@ -212,47 +213,12 @@ final class SelectionMonitor {
         return nil
     }
 
-    // MARK: - Selection bounds via AX
 
-    private func getSelectionBounds(from element: AXUIElement) -> CGRect? {
-        var rangeRaw: AnyObject?
-        guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &rangeRaw) == .success else {
-            return nil
-        }
+    // MARK: - Coordinate conversion (CG top-left origin -> AppKit bottom-left origin)
 
-        var boundsRaw: AnyObject?
-        guard AXUIElementCopyParameterizedAttributeValue(
-            element,
-            kAXBoundsForRangeParameterizedAttribute as CFString,
-            rangeRaw!,
-            &boundsRaw
-        ) == .success else {
-            return nil
-        }
-
-        var rect = CGRect.zero
-        guard AXValueGetValue(boundsRaw as! AXValue, .cgRect, &rect) else {
-            return nil
-        }
-        return rect
-    }
-
-    // MARK: - Mouse position fallback
-
-    private func mousePositionRect() -> CGRect {
-        CGRect(x: lastMousePosition.x + 5, y: lastMousePosition.y + 10, width: 1, height: 1)
-    }
-
-    // MARK: - Coordinate conversion (AX top-left origin -> AppKit bottom-left origin)
-
-    private func axRectToAppKit(_ axRect: CGRect) -> CGRect {
+    private func cgPointToAppKit(_ cgPoint: CGPoint) -> CGPoint {
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 900
-        return CGRect(
-            x: axRect.origin.x,
-            y: primaryHeight - axRect.origin.y - axRect.height,
-            width: axRect.width,
-            height: axRect.height
-        )
+        return CGPoint(x: cgPoint.x, y: primaryHeight - cgPoint.y)
     }
 
     // MARK: - Pasteboard helpers

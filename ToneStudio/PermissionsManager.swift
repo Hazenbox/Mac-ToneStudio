@@ -29,6 +29,24 @@ final class PermissionsManager: ObservableObject {
         guard pollTimer == nil else { return }
         Logger.permissions.info("Starting permission polling every \(AppConstants.permissionPollInterval)s")
 
+        // Instant check when the user switches back to any app after visiting System Settings
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            MainActor.assumeIsolated {
+                let granted = self.checkAccessibility()
+                if granted {
+                    Logger.permissions.info("Accessibility granted (app-switch check)")
+                    self.stopPolling()
+                    NotificationCenter.default.post(name: .accessibilityPermissionGranted, object: nil)
+                }
+            }
+        }
+
+        // Fallback timer in case the notification fires before System Settings has saved the change
         pollTimer = Timer.scheduledTimer(withTimeInterval: AppConstants.permissionPollInterval, repeats: true) { [weak self] _ in
             guard let self else { return }
             MainActor.assumeIsolated {
@@ -45,6 +63,11 @@ final class PermissionsManager: ObservableObject {
     func stopPolling() {
         pollTimer?.invalidate()
         pollTimer = nil
+        NSWorkspace.shared.notificationCenter.removeObserver(
+            self,
+            name: NSWorkspace.didActivateApplicationNotification,
+            object: nil
+        )
     }
 
     func showManualInstructions() {
@@ -60,6 +83,16 @@ final class PermissionsManager: ObservableObject {
             openAccessibilitySettings()
         } else {
             NSApplication.shared.terminate(nil)
+        }
+    }
+
+    func openAccessibilitySettingsDirectly() {
+        // Trigger the system prompt first (shows "ToneStudio wants to control your computer" dialog)
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+        _ = AXIsProcessTrustedWithOptions(options)
+        // Also open System Settings to the Accessibility pane so user can toggle it on
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
         }
     }
 

@@ -1,12 +1,109 @@
 import Cocoa
 import OSLog
 
+// MARK: - Tooltip States
+
 enum TooltipState {
     case collapsed
     case loading
     case result(String)
     case error(String)
 }
+
+// MARK: - Speech Bubble Tail View
+
+/// Draws a downward pointing speech bubble tail (like an upside-down triangle)
+final class BubbleTailView: NSView {
+    var fillColor: NSColor = NSColor(red: 0.17, green: 0.17, blue: 0.19, alpha: 1)
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let path = NSBezierPath()
+        let w = bounds.width
+        let h = bounds.height
+        // Triangle pointing downward from center of bubble bottom
+        path.move(to: CGPoint(x: w / 2 - 7, y: h))
+        path.line(to: CGPoint(x: w / 2 + 7, y: h))
+        path.line(to: CGPoint(x: w / 2, y: 0))
+        path.close()
+        fillColor.setFill()
+        path.fill()
+    }
+}
+
+// MARK: - Dark Bubble Container View
+
+/// Rounded dark pill container with a downward speech tail
+final class BubbleContainerView: NSView {
+    static let tailHeight: CGFloat = 8
+    static let cornerRadius: CGFloat = 22
+
+    private(set) var bubbleLayer: CALayer!
+    private(set) var tailLayer: CAShapeLayer!
+
+    var bubbleColor: NSColor = NSColor(red: 0.17, green: 0.17, blue: 0.19, alpha: 1) {
+        didSet { updateColors() }
+    }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        layer?.sublayers?.forEach { $0.removeFromSuperlayer() }
+        setupLayers()
+    }
+
+    private func setupLayers() {
+        guard let layer = layer else { return }
+        let th = BubbleContainerView.tailHeight
+        let cr = BubbleContainerView.cornerRadius
+
+        // Bubble rect sits above the tail
+        let bubbleRect = CGRect(x: 0, y: th, width: bounds.width, height: bounds.height - th)
+
+        // Bubble body
+        let bLayer = CALayer()
+        bLayer.frame = bubbleRect
+        bLayer.backgroundColor = bubbleColor.cgColor
+        bLayer.cornerRadius = cr
+        bLayer.masksToBounds = true
+        layer.addSublayer(bLayer)
+        bubbleLayer = bLayer
+
+        // Tail triangle (centered at bottom of bubble)
+        let tailW: CGFloat = 14
+        let tailMidX = bounds.width / 2
+        let tLayer = CAShapeLayer()
+        tLayer.frame = CGRect(x: 0, y: 0, width: bounds.width, height: th)
+        let tailPath = CGMutablePath()
+        tailPath.move(to: CGPoint(x: tailMidX - tailW / 2, y: th))
+        tailPath.addLine(to: CGPoint(x: tailMidX + tailW / 2, y: th))
+        tailPath.addLine(to: CGPoint(x: tailMidX, y: 0))
+        tailPath.closeSubpath()
+        tLayer.path = tailPath
+        tLayer.fillColor = bubbleColor.cgColor
+        layer.addSublayer(tLayer)
+        tailLayer = tLayer
+    }
+
+    private func updateColors() {
+        bubbleLayer?.backgroundColor = bubbleColor.cgColor
+        tailLayer?.fillColor = bubbleColor.cgColor
+    }
+}
+
+// MARK: - TooltipWindow
 
 @MainActor
 final class TooltipWindow {
@@ -17,26 +114,37 @@ final class TooltipWindow {
     var onCancel: (() -> Void)?
     var onRetry: (() -> Void)?
 
+    // MARK: Panel
     private let panel: NSPanel
-    private let effectView: NSVisualEffectView
-    private let contentStack: NSStackView
-
-    private var rephraseButton: NSButton!
-    private var spinner: NSProgressIndicator!
-    private var statusLabel: NSTextField!
-    private var resultTextView: NSScrollView!
-    private var resultTextField: NSTextView!
-    private var actionStack: NSStackView!
-
-    private var globalClickMonitor: Any?
-    private var localKeyMonitor: Any?
-
+    private let containerView: NSView       // transparent root
     private var currentState: TooltipState = .collapsed
     private var rewrittenText: String = ""
 
+    // MARK: Event monitors
+    private var globalClickMonitor: Any?
+    private var localKeyMonitor: Any?
+
+    // MARK: Sizing
+    /// Tail height reserved at the bottom of the panel for default/loading states
+    private static let tailHeight: CGFloat = BubbleContainerView.tailHeight
+    private static let bubbleCorner: CGFloat = BubbleContainerView.cornerRadius
+    /// Panel sizes per state
+    private static let defaultSize  = NSSize(width: 230, height: 44 + tailHeight)
+    private static let loadingSize  = NSSize(width: 200, height: 44 + tailHeight)
+    private static let resultWidth: CGFloat  = 360
+    private static let errorWidth: CGFloat   = 300
+
+    // MARK: Colors
+    private static let darkBubbleBG  = NSColor(red: 0.17, green: 0.17, blue: 0.19, alpha: 1)
+    private static let resultCardBG  = NSColor(red: 0.15, green: 0.15, blue: 0.17, alpha: 1)
+    private static let resultBorder  = NSColor(red: 0.30, green: 0.30, blue: 0.33, alpha: 1)
+    private static let primaryText   = NSColor.white
+    private static let secondaryText = NSColor(white: 0.7, alpha: 1)
+    private static let contentBG     = NSColor(red: 0.12, green: 0.12, blue: 0.14, alpha: 1)
+
     init() {
         panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 140, height: 40),
+            contentRect: NSRect(x: 0, y: 0, width: 230, height: 52),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -51,176 +159,46 @@ final class TooltipWindow {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.animationBehavior = .utilityWindow
 
-        effectView = NSVisualEffectView()
-        effectView.material = .popover
-        effectView.state = .active
-        effectView.blendingMode = .behindWindow
-        effectView.wantsLayer = true
-        effectView.layer?.cornerRadius = 10
-        effectView.layer?.masksToBounds = true
-
-        contentStack = NSStackView()
-        contentStack.orientation = .vertical
-        contentStack.spacing = 8
-        contentStack.edgeInsets = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
-        contentStack.translatesAutoresizingMaskIntoConstraints = false
-
-        effectView.addSubview(contentStack)
-        NSLayoutConstraint.activate([
-            contentStack.topAnchor.constraint(equalTo: effectView.topAnchor),
-            contentStack.bottomAnchor.constraint(equalTo: effectView.bottomAnchor),
-            contentStack.leadingAnchor.constraint(equalTo: effectView.leadingAnchor),
-            contentStack.trailingAnchor.constraint(equalTo: effectView.trailingAnchor),
-        ])
-
-        panel.contentView = effectView
-
-        buildUI()
-        updateUI(.collapsed)
-    }
-
-    // MARK: - Build UI elements
-
-    private func buildUI() {
-        rephraseButton = NSButton(title: "✨ Rephrase", target: self, action: #selector(rephraseTapped))
-        rephraseButton.bezelStyle = .accessoryBarAction
-        rephraseButton.controlSize = .regular
-        rephraseButton.font = .systemFont(ofSize: 13, weight: .medium)
-
-        spinner = NSProgressIndicator()
-        spinner.style = .spinning
-        spinner.controlSize = .small
-        spinner.isIndeterminate = true
-
-        statusLabel = NSTextField(labelWithString: "Rephrasing...")
-        statusLabel.font = .systemFont(ofSize: 12)
-        statusLabel.textColor = .secondaryLabelColor
-
-        let resultTV = NSTextView()
-        resultTV.isEditable = false
-        resultTV.isSelectable = true
-        resultTV.font = .systemFont(ofSize: 13)
-        resultTV.textColor = .labelColor
-        resultTV.backgroundColor = .clear
-        resultTV.isVerticallyResizable = true
-        resultTV.isHorizontallyResizable = false
-        resultTV.textContainer?.widthTracksTextView = true
-        resultTV.textContainer?.lineBreakMode = .byWordWrapping
-        resultTextField = resultTV
-
-        let scrollView = NSScrollView()
-        scrollView.documentView = resultTV
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.borderType = .noBorder
-        scrollView.backgroundColor = .clear
-        scrollView.drawsBackground = false
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        resultTextView = scrollView
-
-        let replaceBtn = NSButton(title: "Replace", target: self, action: #selector(replaceTapped))
-        replaceBtn.bezelStyle = .accessoryBarAction
-        replaceBtn.controlSize = .small
-
-        let copyBtn = NSButton(title: "Copy", target: self, action: #selector(copyTapped))
-        copyBtn.bezelStyle = .accessoryBarAction
-        copyBtn.controlSize = .small
-
-        let cancelBtn = NSButton(title: "Cancel", target: self, action: #selector(cancelTapped))
-        cancelBtn.bezelStyle = .accessoryBarAction
-        cancelBtn.controlSize = .small
-
-        actionStack = NSStackView(views: [replaceBtn, copyBtn, cancelBtn])
-        actionStack.orientation = .horizontal
-        actionStack.spacing = 6
-    }
-
-    // MARK: - State management
-
-    func updateUI(_ state: TooltipState) {
-        currentState = state
-
-        contentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-
-        switch state {
-        case .collapsed:
-            contentStack.addArrangedSubview(rephraseButton)
-            resizePanel(width: 140, height: 40)
-
-        case .loading:
-            spinner.startAnimation(nil)
-            let loadingStack = NSStackView(views: [spinner, statusLabel])
-            loadingStack.orientation = .horizontal
-            loadingStack.spacing = 8
-            statusLabel.stringValue = "Rephrasing..."
-            contentStack.addArrangedSubview(loadingStack)
-            resizePanel(width: 220, height: 44)
-
-        case .result(let text):
-            rewrittenText = text
-            spinner.stopAnimation(nil)
-            resultTextField.string = text
-
-            let textHeight = min(max(heightForText(text, width: 260), 30), 150)
-            resultTextView.heightAnchor.constraint(equalToConstant: textHeight).isActive = true
-
-            contentStack.addArrangedSubview(resultTextView)
-            contentStack.addArrangedSubview(actionStack)
-            resizePanel(width: 300, height: textHeight + 56)
-
-        case .error(let message):
-            spinner.stopAnimation(nil)
-            statusLabel.stringValue = message
-            statusLabel.textColor = .systemRed
-
-            let retryBtn = NSButton(title: "Retry", target: self, action: #selector(retryTapped))
-            retryBtn.bezelStyle = .accessoryBarAction
-            retryBtn.controlSize = .small
-
-            let cancelBtn = NSButton(title: "Cancel", target: self, action: #selector(cancelTapped))
-            cancelBtn.bezelStyle = .accessoryBarAction
-            cancelBtn.controlSize = .small
-
-            let errorActions = NSStackView(views: [retryBtn, cancelBtn])
-            errorActions.orientation = .horizontal
-            errorActions.spacing = 6
-
-            contentStack.addArrangedSubview(statusLabel)
-            contentStack.addArrangedSubview(errorActions)
-            resizePanel(width: 280, height: 64)
-        }
+        containerView = NSView()
+        containerView.wantsLayer = true
+        containerView.layer?.backgroundColor = NSColor.clear.cgColor
+        panel.contentView = containerView
     }
 
     // MARK: - Show / Hide
 
     func show(near cursorRect: CGRect) {
-        updateUI(.collapsed)
-
-        let panelSize = panel.frame.size
-
         let cursorPoint = NSPoint(x: cursorRect.midX, y: cursorRect.midY)
         let screen = NSScreen.screens.first { $0.frame.contains(cursorPoint) } ?? NSScreen.main!
         let visibleFrame = screen.visibleFrame
 
+        let panelSize = Self.defaultSize
+
         var origin = CGPoint(
             x: cursorPoint.x - panelSize.width / 2,
-            y: cursorPoint.y + 20
+            y: cursorPoint.y + 16
         )
 
-        origin.x = max(visibleFrame.minX + 4, min(origin.x, visibleFrame.maxX - panelSize.width - 4))
+        origin.x = max(visibleFrame.minX + 8, min(origin.x, visibleFrame.maxX - panelSize.width - 8))
 
         if origin.y + panelSize.height > visibleFrame.maxY {
-            origin.y = cursorPoint.y - panelSize.height - 10
+            // Not enough room above — position below cursor (tail points up, but we keep same design)
+            origin.y = cursorPoint.y - panelSize.height - 8
+        }
+        if origin.y < visibleFrame.minY + 8 {
+            origin.y = visibleFrame.minY + 8
         }
 
-        if origin.y < visibleFrame.minY {
-            origin.y = visibleFrame.minY + 4
-        }
+        // Set frame first then build UI
+        panel.setFrame(NSRect(origin: origin, size: panelSize), display: false)
+        buildCollapsedUI(size: panelSize)
 
-        panel.setFrameOrigin(origin)
         panel.alphaValue = 0
         panel.orderFrontRegardless()
-        panel.animator().alphaValue = 1
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.15
+            panel.animator().alphaValue = 1
+        }
 
         addEventMonitors()
         Logger.tooltip.info("Tooltip shown at (\(origin.x), \(origin.y)) mouse at (\(cursorPoint.x), \(cursorPoint.y))")
@@ -234,52 +212,312 @@ final class TooltipWindow {
         } completionHandler: {
             MainActor.assumeIsolated { [weak self] in
                 self?.panel.orderOut(nil)
-                self?.statusLabel.textColor = .secondaryLabelColor
             }
         }
         Logger.tooltip.info("Tooltip hidden")
     }
 
-    var isVisible: Bool {
-        panel.isVisible
-    }
+    var isVisible: Bool { panel.isVisible }
+    var windowFrame: NSRect { panel.frame }
 
     var isInteracting: Bool {
         switch currentState {
-        case .loading, .result, .error:
-            return true
-        case .collapsed:
-            return false
+        case .loading, .result, .error: return true
+        case .collapsed: return false
         }
     }
 
-    // MARK: - Panel resizing
+    // MARK: - Public state updater (called from AppDelegate)
 
-    private func resizePanel(width: CGFloat, height: CGFloat) {
-        var frame = panel.frame
-        let oldHeight = frame.height
-        frame.size = NSSize(width: width, height: height)
-        frame.origin.y -= (height - oldHeight)
-        panel.animator().setFrame(frame, display: true)
+    func updateUI(_ state: TooltipState) {
+        currentState = state
+        switch state {
+        case .collapsed:
+            panel.isMovableByWindowBackground = false
+            buildCollapsedUI(size: Self.defaultSize)
+            resizeAndReanchor(to: Self.defaultSize)
+        case .loading:
+            panel.isMovableByWindowBackground = false
+            buildLoadingUI()
+            resizeAndReanchor(to: Self.loadingSize)
+        case .result(let text):
+            rewrittenText = text
+            let height = resultCardHeight(for: text)
+            buildResultUI(text: text, height: height)
+            resizeAndReanchor(to: NSSize(width: Self.resultWidth, height: height), hasTail: false)
+            panel.isMovableByWindowBackground = true
+        case .error(let message):
+            let height: CGFloat = 100
+            buildErrorUI(message: message)
+            resizeAndReanchor(to: NSSize(width: Self.errorWidth, height: height), hasTail: false)
+            panel.isMovableByWindowBackground = true
+        }
     }
 
-    // MARK: - Text height estimation
+    // MARK: - Collapsed State
 
-    private func heightForText(_ text: String, width: CGFloat) -> CGFloat {
+    private func buildCollapsedUI(size: NSSize) {
+        currentState = .collapsed
+        clearContainer()
+
+        let bubble = BubbleContainerView(frame: NSRect(origin: .zero, size: size))
+        bubble.bubbleColor = Self.darkBubbleBG
+        bubble.autoresizingMask = [.width, .height]
+        containerView.addSubview(bubble)
+
+        // Inner horizontal stack (sits in bubble body, above tail)
+        let th = Self.tailHeight
+        let innerFrame = NSRect(x: 0, y: th, width: size.width, height: size.height - th)
+
+        let icon = makeAvatarImageView(size: 26)
+        icon.frame = NSRect(x: 14, y: (innerFrame.height - 26) / 2 + th, width: 26, height: 26)
+        containerView.addSubview(icon)
+
+        let label = makeLabel("Rephrase with Tone Studio", size: 13, weight: .medium, color: Self.primaryText)
+        let labelX: CGFloat = 14 + 26 + 10
+        let labelW = size.width - labelX - 14
+        label.frame = NSRect(x: labelX, y: (innerFrame.height - 17) / 2 + th, width: labelW, height: 17)
+        containerView.addSubview(label)
+
+        // Make the entire bubble tappable
+        let clickArea = ClickThroughButton(frame: NSRect(origin: .zero, size: size))
+        clickArea.target = self
+        clickArea.action = #selector(rephraseTapped)
+        clickArea.isBordered = false
+        clickArea.bezelStyle = .shadowlessSquare
+        containerView.addSubview(clickArea)
+    }
+
+    // MARK: - Loading State
+
+    private func buildLoadingUI() {
+        currentState = .loading
+        clearContainer()
+        let size = Self.loadingSize
+
+        let bubble = BubbleContainerView(frame: NSRect(origin: .zero, size: size))
+        bubble.bubbleColor = Self.darkBubbleBG
+        bubble.autoresizingMask = [.width, .height]
+        containerView.addSubview(bubble)
+
+        let th = Self.tailHeight
+        let innerH = size.height - th
+
+        let spinner = NSProgressIndicator(frame: NSRect(x: 14, y: (innerH - 18) / 2 + th, width: 18, height: 18))
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.isIndeterminate = true
+        spinner.appearance = NSAppearance(named: .vibrantDark)
+        spinner.startAnimation(nil)
+        containerView.addSubview(spinner)
+
+        let label = makeLabel("Generating...", size: 13, weight: .regular, color: Self.secondaryText)
+        let labelX: CGFloat = 14 + 18 + 10
+        let labelW = size.width - labelX - 14
+        label.frame = NSRect(x: labelX, y: (innerH - 17) / 2 + th, width: labelW, height: 17)
+        containerView.addSubview(label)
+    }
+
+    // MARK: - Result State
+
+    private func buildResultUI(text: String, height: CGFloat) {
+        currentState = .result(text)
+        clearContainer()
+        let width = Self.resultWidth
+
+        // Card background (no tail)
+        let cardLayer = CALayer()
+        cardLayer.frame = CGRect(x: 0, y: 0, width: width, height: height)
+        cardLayer.backgroundColor = Self.resultCardBG.cgColor
+        cardLayer.cornerRadius = 14
+        cardLayer.borderColor = Self.resultBorder.cgColor
+        cardLayer.borderWidth = 1
+        cardLayer.masksToBounds = true
+        containerView.layer?.addSublayer(cardLayer)
+
+        let headerH: CGFloat = 48
+        let padding: CGFloat = 14
+
+        // Header: icon
+        let icon = makeAvatarImageView(size: 26)
+        icon.frame = NSRect(x: padding, y: height - headerH + (headerH - 26) / 2, width: 26, height: 26)
+        containerView.addSubview(icon)
+
+        // Header: title
+        let title = makeLabel("Tone Studio", size: 14, weight: .semibold, color: Self.primaryText)
+        title.frame = NSRect(x: padding + 26 + 10, y: height - headerH + (headerH - 18) / 2, width: 160, height: 18)
+        containerView.addSubview(title)
+
+        // Header action buttons (right side): Refresh, Copy, Close
+        let refreshBtn = makeIconButton(symbolName: "arrow.clockwise", action: #selector(retryTapped))
+        let copyBtn    = makeIconButton(symbolName: "doc.on.doc",       action: #selector(copyTapped))
+        let closeBtn   = makeIconButton(symbolName: "xmark",            action: #selector(cancelTapped))
+
+        let btnSize: CGFloat = 28
+        let btnY = height - headerH + (headerH - btnSize) / 2
+        closeBtn.frame   = NSRect(x: width - padding - btnSize, y: btnY, width: btnSize, height: btnSize)
+        copyBtn.frame    = NSRect(x: width - padding - btnSize * 2 - 6, y: btnY, width: btnSize, height: btnSize)
+        refreshBtn.frame = NSRect(x: width - padding - btnSize * 3 - 12, y: btnY, width: btnSize, height: btnSize)
+        containerView.addSubview(refreshBtn)
+        containerView.addSubview(copyBtn)
+        containerView.addSubview(closeBtn)
+
+        // Content area background (slightly different shade)
+        let contentY: CGFloat = 12
+        let contentH = height - headerH - 14 - contentY
+        let contentBG = NSView(frame: NSRect(x: padding, y: contentY, width: width - padding * 2, height: contentH))
+        contentBG.wantsLayer = true
+        contentBG.layer?.backgroundColor = Self.contentBG.cgColor
+        contentBG.layer?.cornerRadius = 8
+        containerView.addSubview(contentBG)
+
+        // Text view inside content area
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: width - padding * 2, height: contentH))
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.string = text
+        textView.font = .systemFont(ofSize: 13)
+        textView.textColor = NSColor(white: 0.85, alpha: 1)
+        textView.backgroundColor = .clear
+        textView.drawsBackground = false
+        textView.textContainerInset = NSSize(width: 8, height: 8)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.lineBreakMode = .byWordWrapping
+
+        let scrollView = NSScrollView(frame: NSRect(x: padding, y: contentY, width: width - padding * 2, height: contentH))
+        scrollView.documentView = textView
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.borderType = .noBorder
+        scrollView.backgroundColor = .clear
+        scrollView.drawsBackground = false
+        containerView.addSubview(scrollView)
+    }
+
+    // MARK: - Error State
+
+    private func buildErrorUI(message: String) {
+        currentState = .error(message)
+        clearContainer()
+        let width = Self.errorWidth
+        let height: CGFloat = 100
+
+        let cardLayer = CALayer()
+        cardLayer.frame = CGRect(x: 0, y: 0, width: width, height: height)
+        cardLayer.backgroundColor = Self.resultCardBG.cgColor
+        cardLayer.cornerRadius = 14
+        cardLayer.borderColor = NSColor.systemRed.withAlphaComponent(0.4).cgColor
+        cardLayer.borderWidth = 1
+        containerView.layer?.addSublayer(cardLayer)
+
+        let padding: CGFloat = 14
+        let errorIcon = makeLabel("⚠️", size: 14, weight: .regular, color: .white)
+        errorIcon.frame = NSRect(x: padding, y: height - 40, width: 22, height: 22)
+        containerView.addSubview(errorIcon)
+
+        let msgLabel = makeLabel(message, size: 12, weight: .regular, color: NSColor(white: 0.75, alpha: 1))
+        msgLabel.frame = NSRect(x: padding + 26, y: height - 38, width: width - padding * 2 - 26, height: 36)
+        msgLabel.maximumNumberOfLines = 2
+        containerView.addSubview(msgLabel)
+
+        let retryBtn  = makeTextButton("Retry",  action: #selector(retryTapped))
+        let cancelBtn = makeTextButton("Dismiss", action: #selector(cancelTapped))
+        retryBtn.frame  = NSRect(x: padding, y: 10, width: 70, height: 26)
+        cancelBtn.frame = NSRect(x: padding + 76, y: 10, width: 70, height: 26)
+        containerView.addSubview(retryBtn)
+        containerView.addSubview(cancelBtn)
+    }
+
+    // MARK: - Helpers
+
+    private func clearContainer() {
+        containerView.subviews.forEach { $0.removeFromSuperview() }
+        containerView.layer?.sublayers?.forEach { $0.removeFromSuperlayer() }
+    }
+
+    private func resultCardHeight(for text: String) -> CGFloat {
+        let textWidth = Self.resultWidth - 28 - 16 // padding * 2 - textInset
         let attr = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 13)])
-        let rect = attr.boundingRect(with: NSSize(width: width - 24, height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin, .usesFontLeading])
-        return ceil(rect.height) + 8
+        let textRect = attr.boundingRect(
+            with: NSSize(width: textWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+        let textH = min(max(ceil(textRect.height) + 16, 60), 180)
+        return 48 + 14 + textH + 12 // header + divider gap + content + bottom padding
     }
 
-    // MARK: - Event monitors (click outside + Escape)
+    /// Resize panel and keep top-left corner anchored (panel grows downward)
+    private func resizeAndReanchor(to size: NSSize, hasTail: Bool = true) {
+        var frame = panel.frame
+        let topLeft = CGPoint(x: frame.minX, y: frame.maxY)
+        frame.size = size
+        frame.origin = CGPoint(x: topLeft.x, y: topLeft.y - size.height)
+        panel.setFrame(frame, display: true)
+    }
+
+    private func makeAvatarImageView(size: CGFloat) -> NSImageView {
+        let imageView = NSImageView(frame: NSRect(x: 0, y: 0, width: size, height: size))
+        imageView.image = NSImage(named: "ai_avatar")
+        imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.imageAlignment = .alignCenter
+        imageView.wantsLayer = true
+        imageView.layer?.cornerRadius = size / 2
+        imageView.layer?.masksToBounds = true
+        return imageView
+    }
+
+    private func makeLabel(_ text: String, size: CGFloat, weight: NSFont.Weight, color: NSColor) -> NSTextField {
+        let field = NSTextField(labelWithString: text)
+        field.font = .systemFont(ofSize: size, weight: weight)
+        field.textColor = color
+        field.isBezeled = false
+        field.drawsBackground = false
+        field.isEditable = false
+        field.isSelectable = false
+        field.lineBreakMode = .byTruncatingTail
+        return field
+    }
+
+    private func makeIconButton(symbolName: String, action: Selector) -> NSButton {
+        let btn = NSButton(frame: .zero)
+        let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+        btn.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config)
+        btn.isBordered = false
+        btn.bezelStyle = .shadowlessSquare
+        btn.target = self
+        btn.action = action
+        btn.contentTintColor = NSColor(white: 0.7, alpha: 1)
+        btn.imageScaling = .scaleProportionallyDown
+        return btn
+    }
+
+    private func makeTextButton(_ title: String, action: Selector) -> NSButton {
+        let btn = NSButton(title: title, target: self, action: action)
+        btn.bezelStyle = .roundRect
+        btn.controlSize = .small
+        btn.font = .systemFont(ofSize: 12)
+        btn.appearance = NSAppearance(named: .vibrantDark)
+        return btn
+    }
+
+    // MARK: - Event monitors
 
     private func addEventMonitors() {
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self, self.panel.isVisible else { return }
-            let clickLocation = event.locationInWindow
-            if !self.panel.frame.contains(clickLocation) {
-                self.hide()
-                self.onCancel?()
+            switch self.currentState {
+            case .result, .error:
+                // Persistent states — user must click X explicitly, don't auto-dismiss
+                break
+            case .collapsed, .loading:
+                let mouseLoc = NSEvent.mouseLocation
+                if !self.panel.frame.contains(mouseLoc) {
+                    self.hide()
+                    self.onCancel?()
+                }
             }
         }
 
@@ -294,36 +532,21 @@ final class TooltipWindow {
     }
 
     private func removeEventMonitors() {
-        if let monitor = globalClickMonitor {
-            NSEvent.removeMonitor(monitor)
-            globalClickMonitor = nil
-        }
-        if let monitor = localKeyMonitor {
-            NSEvent.removeMonitor(monitor)
-            localKeyMonitor = nil
-        }
+        if let m = globalClickMonitor { NSEvent.removeMonitor(m); globalClickMonitor = nil }
+        if let m = localKeyMonitor    { NSEvent.removeMonitor(m); localKeyMonitor = nil }
     }
 
     // MARK: - Button actions
 
-    @objc private func rephraseTapped() {
-        onRephrase?()
-    }
+    @objc private func rephraseTapped() { onRephrase?() }
+    @objc private func copyTapped()     { onCopy?(rewrittenText) }
+    @objc private func cancelTapped()   { hide(); onCancel?() }
+    @objc private func retryTapped()    { onRetry?() }
+}
 
-    @objc private func replaceTapped() {
-        onReplace?(rewrittenText)
-    }
+// MARK: - Invisible click-through button overlay
 
-    @objc private func copyTapped() {
-        onCopy?(rewrittenText)
-    }
-
-    @objc private func cancelTapped() {
-        hide()
-        onCancel?()
-    }
-
-    @objc private func retryTapped() {
-        onRetry?()
-    }
+/// Transparent NSButton that captures clicks over the full bubble area
+private final class ClickThroughButton: NSButton {
+    override func draw(_ dirtyRect: NSRect) { /* transparent */ }
 }

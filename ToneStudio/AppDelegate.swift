@@ -14,13 +14,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var currentTask: Task<Void, Never>?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        permissionsManager.requestAccessibility()
-
-        if permissionsManager.isAccessibilityGranted {
+        if AXIsProcessTrusted() {
             startMonitoring()
         } else {
+            // Show system prompt + open System Settings in one shot (no duplicate prompt)
+            permissionsManager.openAccessibilitySettingsDirectly()
             permissionsManager.startPolling()
-            permissionsManager.showManualInstructions()
         }
 
         NotificationCenter.default.addObserver(
@@ -53,6 +52,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Selection handling
 
     private func handleSelection(_ result: SelectionResult) {
+        // Ignore mouse-ups that originate inside the tooltip window itself (prevents hover re-triggering)
+        if tooltipWindow.isVisible,
+           tooltipWindow.windowFrame.contains(CGPoint(x: result.screenRect.midX, y: result.screenRect.midY)) {
+            return
+        }
+
         if tooltipWindow.isVisible && tooltipWindow.isInteracting && result.text == selectedText {
             return
         }

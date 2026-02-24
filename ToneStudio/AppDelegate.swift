@@ -131,80 +131,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         
-        let text = getSelectedTextViaClipboard()
-        
-        if let text = text, !text.isEmpty, text.count >= AppConstants.minSelectionLength {
-            selectedText = text
-            let mouseLocation = NSEvent.mouseLocation
-            lastSelectionRect = CGRect(x: mouseLocation.x, y: mouseLocation.y, width: 1, height: 1)
+        Task {
+            let text = await selectionMonitor.getSelectedText()
             
-            if tooltipWindow.isVisible {
-                tooltipWindow.hide()
-            }
-            
-            tooltipWindow.show(near: lastSelectionRect)
-            setupTooltipCallbacks()
-        } else {
-            let mouseLocation = NSEvent.mouseLocation
-            let rect = CGRect(x: mouseLocation.x, y: mouseLocation.y, width: 1, height: 1)
-            
-            if tooltipWindow.isVisible {
-                tooltipWindow.hide()
-            }
-            
-            tooltipWindow.showNoSelection(near: rect)
-        }
-    }
-    
-    private func getSelectedTextViaClipboard() -> String? {
-        let pasteboard = NSPasteboard.general
-        let backup = backupPasteboard(pasteboard)
-        
-        pasteboard.clearContents()
-        
-        simulateKeystroke(virtualKey: 0x08, flags: .maskCommand) // Cmd+C
-        
-        usleep(AppConstants.clipboardReadDelay)
-        
-        let text = pasteboard.string(forType: .string)
-        
-        restorePasteboard(pasteboard, from: backup)
-        
-        return text
-    }
-    
-    private func backupPasteboard(_ pasteboard: NSPasteboard) -> [(NSPasteboard.PasteboardType, Data)] {
-        guard let items = pasteboard.pasteboardItems else { return [] }
-        var backup: [(NSPasteboard.PasteboardType, Data)] = []
-        for item in items {
-            for type in item.types {
-                if let data = item.data(forType: type) {
-                    backup.append((type, data))
+            if let text = text, !text.isEmpty, text.count >= AppConstants.minSelectionLength {
+                selectedText = text
+                let mouseLocation = NSEvent.mouseLocation
+                lastSelectionRect = CGRect(x: mouseLocation.x, y: mouseLocation.y, width: 1, height: 1)
+                
+                if tooltipWindow.isVisible {
+                    tooltipWindow.hide()
                 }
+                
+                tooltipWindow.show(near: lastSelectionRect)
+                setupTooltipCallbacks()
+            } else {
+                let mouseLocation = NSEvent.mouseLocation
+                let rect = CGRect(x: mouseLocation.x, y: mouseLocation.y, width: 1, height: 1)
+                
+                if tooltipWindow.isVisible {
+                    tooltipWindow.hide()
+                }
+                
+                tooltipWindow.showNoSelection(near: rect)
             }
         }
-        return backup
     }
     
-    private func restorePasteboard(_ pasteboard: NSPasteboard, from backup: [(NSPasteboard.PasteboardType, Data)]) {
-        pasteboard.clearContents()
-        if backup.isEmpty { return }
-        let item = NSPasteboardItem()
-        for (type, data) in backup {
-            item.setData(data, forType: type)
-        }
-        pasteboard.writeObjects([item])
-    }
-    
-    private func simulateKeystroke(virtualKey: CGKeyCode, flags: CGEventFlags) {
-        let src = CGEventSource(stateID: .hidSystemState)
-        let keyDown = CGEvent(keyboardEventSource: src, virtualKey: virtualKey, keyDown: true)
-        let keyUp = CGEvent(keyboardEventSource: src, virtualKey: virtualKey, keyDown: false)
-        keyDown?.flags = flags
-        keyUp?.flags = flags
-        keyDown?.post(tap: .cghidEventTap)
-        keyUp?.post(tap: .cghidEventTap)
-    }
     
     private func setupTooltipCallbacks() {
         tooltipWindow.onRephrase = { [weak self] in
@@ -278,14 +231,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         currentTask?.cancel()
         currentTask = nil
         
-        // Try to get selected text to pre-fill
-        let text = getSelectedTextViaClipboard()
-        
-        if let text = text, !text.isEmpty, text.count >= AppConstants.minSelectionLength {
-            selectedText = text
-            editorWindow.showWithText(text)
-        } else {
-            editorWindow.show()
+        // Try to get selected text to pre-fill using SelectedTextKit
+        Task {
+            let text = await selectionMonitor.getSelectedText()
+            
+            if let text = text, !text.isEmpty, text.count >= AppConstants.minSelectionLength {
+                selectedText = text
+                editorWindow.showWithText(text)
+            } else {
+                editorWindow.show()
+            }
         }
     }
     

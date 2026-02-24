@@ -1,6 +1,7 @@
 import Cocoa
 import ApplicationServices
 import OSLog
+import SelectedTextKit
 
 struct SelectionResult {
     let text: String
@@ -17,6 +18,8 @@ final class SelectionMonitor {
     private var machPort: CFMachPort?
     private var pendingWork: DispatchWorkItem?
     private var lastMousePosition: CGPoint = .zero
+    
+    private let textManager = SelectedTextManager.shared
 
     func start(callback: @escaping SelectionCallback) {
         self.callback = callback
@@ -140,130 +143,77 @@ final class SelectionMonitor {
         pendingWork?.cancel()
 
         let work = DispatchWorkItem { [weak self] in
-            self?.performAXQuery()
+            self?.performTextRetrieval()
         }
         pendingWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + AppConstants.debounceInterval, execute: work)
     }
 
-    // MARK: - Accessibility queries (main thread)
+    // MARK: - Text retrieval using SelectedTextKit
 
-    private func performAXQuery() {
-        let systemWide = AXUIElementCreateSystemWide()
-
-        var focusedRaw: AnyObject?
-        guard AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &focusedRaw) == .success else {
-            Logger.selection.debug("No focused UI element")
-            return
+    private func performTextRetrieval() {
+        Task {
+            await getSelectedTextWithMultipleStrategies()
         }
-        let focused = focusedRaw as! AXUIElement
-
-        if isSecureField(focused) {
-            Logger.selection.debug("Skipping secure text field")
-            return
-        }
-
-        guard let text = getSelectedText(from: focused) ?? getTextViaClipboard(),
-              text.count >= AppConstants.minSelectionLength,
-              text.count <= AppConstants.maxSelectionLength else {
-            return
-        }
-
-        let appKitMousePos = cgPointToAppKit(lastMousePosition)
-        let selectionRect = CGRect(x: appKitMousePos.x, y: appKitMousePos.y, width: 1, height: 1)
-
-        Logger.selection.info("Mouse-up at CG(\(self.lastMousePosition.x), \(self.lastMousePosition.y)) -> AppKit(\(appKitMousePos.x), \(appKitMousePos.y))")
-        callback?(SelectionResult(text: text, screenRect: selectionRect))
     }
-
-    // MARK: - Secure field check
-
-    private func isSecureField(_ element: AXUIElement) -> Bool {
-        var roleRaw: AnyObject?
-        guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRaw) == .success,
-              let role = roleRaw as? String else {
-            return false
+    
+    private func getSelectedTextWithMultipleStrategies() async {
+        do {
+            let strategies: [TextStrategy] = [
+                .accessibility,
+                .appleScript,
+                .menuAction,
+                .shortcut
+            ]
+            
+            if let text = try await textManager.getSelectedText(strategies: strategies) {
+                let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                
+                guard trimmedText.count >= AppConstants.minSelectionLength,
+                      trimmedText.count <= AppConstants.maxSelectionLength else {
+                    Logger.selection.debug("Text length \(trimmedText.count) outside valid range")
+                    return
+                }
+                
+                let appKitMousePos = cgPointToAppKit(lastMousePosition)
+                let selectionRect = CGRect(x: appKitMousePos.x, y: appKitMousePos.y, width: 1, height: 1)
+                
+                Logger.selection.info("Got selected text via SelectedTextKit (\(trimmedText.count) chars)")
+                callback?(SelectionResult(text: trimmedText, screenRect: selectionRect))
+            } else {
+                Logger.selection.debug("No text selected")
+            }
+        } catch {
+            Logger.selection.error("SelectedTextKit error: \(error.localizedDescription)")
         }
-        return role == "AXSecureTextField"
     }
-
-    // MARK: - Get selected text via AX
-
-    private func getSelectedText(from element: AXUIElement) -> String? {
-        var textRaw: AnyObject?
-        guard AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &textRaw) == .success,
-              let text = textRaw as? String,
-              !text.isEmpty else {
-            return nil
-        }
-        return text
-    }
-
-    // MARK: - Clipboard-copy fallback (for browsers / Electron)
-
-    private func getTextViaClipboard() -> String? {
-        let pasteboard = NSPasteboard.general
-        let backup = backupPasteboard(pasteboard)
-
-        pasteboard.clearContents()
-
-        simulateKeystroke(virtualKey: 0x08, flags: .maskCommand) // Cmd+C
-
-        usleep(AppConstants.clipboardReadDelay)
-
-        let text = pasteboard.string(forType: .string)
-
-        restorePasteboard(pasteboard, from: backup)
-
-        if let text, !text.isEmpty {
-            Logger.selection.debug("Got text via clipboard fallback (\(text.count) chars)")
-            return text
+    
+    // MARK: - Get selected text via hotkey (for manual trigger)
+    
+    func getSelectedText() async -> String? {
+        do {
+            let strategies: [TextStrategy] = [
+                .accessibility,
+                .appleScript,
+                .menuAction,
+                .shortcut
+            ]
+            
+            if let text = try await textManager.getSelectedText(strategies: strategies) {
+                let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                Logger.selection.info("Got selected text on demand (\(trimmedText.count) chars)")
+                return trimmedText
+            }
+        } catch {
+            Logger.selection.error("SelectedTextKit error on demand: \(error.localizedDescription)")
         }
         return nil
     }
-
 
     // MARK: - Coordinate conversion (CG top-left origin -> AppKit bottom-left origin)
 
     private func cgPointToAppKit(_ cgPoint: CGPoint) -> CGPoint {
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 900
         return CGPoint(x: cgPoint.x, y: primaryHeight - cgPoint.y)
-    }
-
-    // MARK: - Pasteboard helpers
-
-    private func backupPasteboard(_ pasteboard: NSPasteboard) -> [(NSPasteboard.PasteboardType, Data)] {
-        guard let items = pasteboard.pasteboardItems else { return [] }
-        var backup: [(NSPasteboard.PasteboardType, Data)] = []
-        for item in items {
-            for type in item.types {
-                if let data = item.data(forType: type) {
-                    backup.append((type, data))
-                }
-            }
-        }
-        return backup
-    }
-
-    private func restorePasteboard(_ pasteboard: NSPasteboard, from backup: [(NSPasteboard.PasteboardType, Data)]) {
-        pasteboard.clearContents()
-        if backup.isEmpty { return }
-        let item = NSPasteboardItem()
-        for (type, data) in backup {
-            item.setData(data, forType: type)
-        }
-        pasteboard.writeObjects([item])
-    }
-
-    // MARK: - Simulate keystroke
-
-    private func simulateKeystroke(virtualKey: CGKeyCode, flags: CGEventFlags) {
-        let src = CGEventSource(stateID: .hidSystemState)
-        let keyDown = CGEvent(keyboardEventSource: src, virtualKey: virtualKey, keyDown: true)
-        let keyUp = CGEvent(keyboardEventSource: src, virtualKey: virtualKey, keyDown: false)
-        keyDown?.flags = flags
-        keyUp?.flags = flags
-        keyDown?.post(tap: .cghidEventTap)
-        keyUp?.post(tap: .cghidEventTap)
     }
 }

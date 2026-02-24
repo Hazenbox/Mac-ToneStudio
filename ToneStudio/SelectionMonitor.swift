@@ -30,6 +30,16 @@ struct SelectionResult {
     var lineHeight: CGFloat {
         return hasPreciseBounds ? firstLineBounds.height : 20
     }
+    
+    /// Detects if this is a double-click selection (vs drag selection)
+    /// Double-click: mouse-down and mouse-up are within ~10px of each other
+    var isDoubleClickSelection: Bool {
+        let distance = hypot(
+            selectionStartPoint.x - fallbackPoint.x,
+            selectionStartPoint.y - fallbackPoint.y
+        )
+        return distance < 10
+    }
 }
 
 @MainActor

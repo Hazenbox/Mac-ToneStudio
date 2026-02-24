@@ -221,26 +221,47 @@ final class TooltipWindow {
               selection.firstLineBounds.width, selection.firstLineBounds.height)
         
         // CRITICAL: If we don't have precise bounds (AX API failed for Electron/browser),
-        // fall back to selection START position (where user began selecting)
-        // Position tooltip to the LEFT of the selection start (same as native apps)
+        // use fallback positioning based on mouse positions
         guard selection.hasPreciseBounds else {
-            let startPoint = selection.selectionStartPoint
-            NSLog("⚠️ Using selection START position for fallback at (%0.f, %0.f)", startPoint.x, startPoint.y)
+            let clickPoint = selection.selectionStartPoint
+            let isDoubleClick = selection.isDoubleClickSelection
             
-            // Find the screen containing the start point
-            let screen = NSScreen.screens.first { $0.frame.contains(startPoint) } ?? NSScreen.main!
+            NSLog("⚠️ Using fallback positioning: isDoubleClick=%d, clickPoint=(%0.f, %0.f)",
+                  isDoubleClick ? 1 : 0, clickPoint.x, clickPoint.y)
+            
+            // Find the screen containing the click point
+            let screen = NSScreen.screens.first { $0.frame.contains(clickPoint) } ?? NSScreen.main!
             let visibleFrame = screen.visibleFrame
             
-            // Position to the LEFT of the selection start, vertically centered
-            var origin = CGPoint(
-                x: startPoint.x - size.width - Self.horizontalGap,
-                y: startPoint.y - size.height / 2
-            )
+            var origin: CGPoint
             
-            // If overflows left edge, flip to RIGHT side
-            if origin.x < visibleFrame.minX + Self.screenEdgePadding {
-                origin.x = startPoint.x + Self.horizontalGap
-                NSLog("   Flipped to right side due to left overflow")
+            if isDoubleClick {
+                // DOUBLE-CLICK: Position to the RIGHT of the click point
+                // This feels natural as the tooltip appears where user's attention is
+                origin = CGPoint(
+                    x: clickPoint.x + Self.horizontalGap + 10,  // Slight offset to clear the word
+                    y: clickPoint.y - size.height / 2
+                )
+                NSLog("   Double-click detected: positioning to RIGHT of click")
+                
+                // If overflows right edge, flip to LEFT side
+                if origin.x + size.width > visibleFrame.maxX - Self.screenEdgePadding {
+                    origin.x = clickPoint.x - size.width - Self.horizontalGap - 10
+                    NSLog("   Flipped to left side due to right overflow")
+                }
+            } else {
+                // DRAG SELECTION: Position to the LEFT of the selection start
+                origin = CGPoint(
+                    x: clickPoint.x - size.width - Self.horizontalGap,
+                    y: clickPoint.y - size.height / 2
+                )
+                NSLog("   Drag selection: positioning to LEFT of start")
+                
+                // If overflows left edge, flip to RIGHT side
+                if origin.x < visibleFrame.minX + Self.screenEdgePadding {
+                    origin.x = clickPoint.x + Self.horizontalGap
+                    NSLog("   Flipped to right side due to left overflow")
+                }
             }
             
             // Handle vertical overflow

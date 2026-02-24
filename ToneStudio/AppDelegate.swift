@@ -84,6 +84,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Selection handling
 
     private func handleSelection(_ result: SelectionResult) {
+        // Don't show tooltip when editor window is visible
+        if editorWindow.isVisible {
+            return
+        }
+        
         if tooltipWindow.isVisible,
            tooltipWindow.windowFrame.contains(CGPoint(x: result.screenRect.midX, y: result.screenRect.midY)) {
             return
@@ -269,15 +274,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.performEditorRewrite(text: text)
         }
         
-        editorWindow.onCopy = { [weak self] text in
+        editorWindow.onCopy = { text in
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
             Logger.editor.info("Copied result to clipboard")
-        }
-        
-        editorWindow.onReplace = { [weak self] text in
-            self?.accessibilityManager.replaceSelectedText(with: text)
-            Logger.editor.info("Replaced selected text")
         }
         
         editorWindow.onTryAgain = { [weak self] in

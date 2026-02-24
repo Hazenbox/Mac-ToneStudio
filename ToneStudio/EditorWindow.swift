@@ -9,7 +9,6 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     // MARK: Callbacks
     var onGenerate: ((String) -> Void)?
     var onCopy: ((String) -> Void)?
-    var onReplace: ((String) -> Void)?
     var onClose: (() -> Void)?
     var onTryAgain: (() -> Void)?
     var onLike: ((String) -> Void)?
@@ -30,18 +29,18 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     private let window: NSWindow
     private let containerView: NSView
     
+    private var inputContainer: NSView!
     private var inputTextView: NSTextView!
     private var inputScrollView: NSScrollView!
     private var generateButton: NSButton!
     private var resultTextView: NSTextView!
     private var resultScrollView: NSScrollView!
     private var copyButton: NSButton!
-    private var replaceButton: NSButton!
     private var tryAgainButton: NSButton!
     private var likeButton: NSButton!
     private var dislikeButton: NSButton!
     private var feedbackSubmitted: Bool = false
-    private var statusLabel: NSTextField!
+    private var errorLabel: NSTextField!
     private var resultContainer: NSView!
     private var actionButtonsStack: NSStackView!
     
@@ -49,12 +48,12 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     private var localKeyMonitor: Any?
     
     // MARK: Sizing
-    private static let windowSize = NSSize(width: 500, height: 380)
-    private static let minSize = NSSize(width: 400, height: 320)
+    private static let windowSize = NSSize(width: 480, height: 340)
+    private static let minSize = NSSize(width: 400, height: 300)
     private static let maxSize = NSSize(width: 800, height: 700)
-    private static let padding: CGFloat = 20
-    private static let inputHeight: CGFloat = 140
-    private static let resultHeight: CGFloat = 120
+    private static let padding: CGFloat = 16
+    private static let inputHeight: CGFloat = 120
+    private static let resultHeight: CGFloat = 100
     
     // MARK: Colors
     private static let inputBgColor = NSColor.controlBackgroundColor
@@ -114,66 +113,70 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     private func setupUI() {
         let padding = Self.padding
         let contentWidth = Self.windowSize.width - padding * 2
-        var yOffset = Self.windowSize.height - padding
+        var yOffset = Self.windowSize.height - padding - 8  // Extra top padding
         
-        // Input section
+        // Input section with inline generate button
         yOffset -= Self.inputHeight
         setupInputSection(at: yOffset, width: contentWidth, padding: padding)
         
-        // Generate button
+        // Error label (below input, only shown on error)
+        yOffset -= 4
         yOffset -= 16
-        yOffset -= 32
-        setupGenerateButton(at: yOffset, width: contentWidth, padding: padding)
-        
-        // Status label (for errors only)
-        yOffset -= 8
-        yOffset -= 20
-        setupStatusLabel(at: yOffset, width: contentWidth, padding: padding)
+        setupErrorLabel(at: yOffset, width: contentWidth, padding: padding)
         
         // Result section
         yOffset -= 8
         yOffset -= Self.resultHeight
         setupResultSection(at: yOffset, width: contentWidth, padding: padding)
         
-        // Action buttons
-        yOffset -= 12
+        // Action buttons (bottom-left of result)
+        yOffset -= 6
         setupActionButtons(at: yOffset, width: contentWidth, padding: padding)
         
         updateUIForState()
     }
     
     private func setupInputSection(at y: CGFloat, width: CGFloat, padding: CGFloat) {
-        // Input container with visible background
-        let inputContainer = NSView(frame: NSRect(x: padding, y: y, width: width, height: Self.inputHeight))
+        // Input container - clean, no border
+        inputContainer = NSView(frame: NSRect(x: padding, y: y, width: width, height: Self.inputHeight))
         inputContainer.wantsLayer = true
         inputContainer.layer?.backgroundColor = Self.inputBgColor.cgColor
-        inputContainer.layer?.cornerRadius = 8
-        inputContainer.layer?.borderWidth = 1
-        inputContainer.layer?.borderColor = NSColor.separatorColor.cgColor
+        inputContainer.layer?.cornerRadius = 12
         inputContainer.identifier = NSUserInterfaceItemIdentifier("inputContainer")
         containerView.addSubview(inputContainer)
         
-        // Scroll view for text
-        inputScrollView = NSScrollView(frame: NSRect(x: 8, y: 8, width: width - 16, height: Self.inputHeight - 16))
+        // Generate button - inline at bottom-right of input container
+        generateButton = NSButton(frame: NSRect(x: width - 96, y: 8, width: 88, height: 28))
+        generateButton.title = "generate"
+        generateButton.bezelStyle = .rounded
+        generateButton.font = .systemFont(ofSize: 12, weight: .medium)
+        generateButton.target = self
+        generateButton.action = #selector(generateButtonClicked)
+        generateButton.keyEquivalent = "\r"
+        generateButton.keyEquivalentModifierMask = .command
+        inputContainer.addSubview(generateButton)
+        
+        // Scroll view for text - above the button
+        let scrollHeight = Self.inputHeight - 44  // Leave room for button
+        inputScrollView = NSScrollView(frame: NSRect(x: 12, y: 40, width: width - 24, height: scrollHeight))
         inputScrollView.hasVerticalScroller = true
         inputScrollView.hasHorizontalScroller = false
-        inputScrollView.autohidesScrollers = false
+        inputScrollView.autohidesScrollers = true
         inputScrollView.scrollerStyle = .overlay
         inputScrollView.borderType = .noBorder
         inputScrollView.drawsBackground = false
-        inputScrollView.autoresizingMask = [.width, .height]
         
-        // Text view with proper scrolling setup
+        // Text view
         let textStorage = NSTextStorage()
         let layoutManager = NSLayoutManager()
         textStorage.addLayoutManager(layoutManager)
         
-        let textContainer = NSTextContainer(containerSize: NSSize(width: width - 32, height: CGFloat.greatestFiniteMagnitude))
+        let textContainer = NSTextContainer(containerSize: NSSize(width: width - 48, height: CGFloat.greatestFiniteMagnitude))
         textContainer.widthTracksTextView = true
         textContainer.heightTracksTextView = false
         layoutManager.addTextContainer(textContainer)
         
-        inputTextView = NSTextView(frame: NSRect(x: 0, y: 0, width: width - 16, height: Self.inputHeight - 16), textContainer: textContainer)
+        inputTextView = NSTextView(frame: NSRect(x: 0, y: 0, width: width - 24, height: scrollHeight), textContainer: textContainer)
         inputTextView.isEditable = true
         inputTextView.isSelectable = true
         inputTextView.isRichText = false
@@ -184,7 +187,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         inputTextView.isVerticallyResizable = true
         inputTextView.isHorizontallyResizable = false
         inputTextView.autoresizingMask = [.width]
-        inputTextView.minSize = NSSize(width: 0, height: Self.inputHeight - 16)
+        inputTextView.minSize = NSSize(width: 0, height: scrollHeight)
         inputTextView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         inputTextView.delegate = self
         inputTextView.insertionPointColor = Self.accentColor
@@ -194,62 +197,46 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         inputContainer.addSubview(inputScrollView)
     }
     
-    private func setupGenerateButton(at y: CGFloat, width: CGFloat, padding: CGFloat) {
-        generateButton = NSButton(frame: NSRect(x: padding + (width - 120) / 2, y: y, width: 120, height: 32))
-        generateButton.title = "generate"
-        generateButton.bezelStyle = .rounded
-        generateButton.font = .systemFont(ofSize: 13, weight: .medium)
-        generateButton.target = self
-        generateButton.action = #selector(generateButtonClicked)
-        generateButton.keyEquivalent = "\r"
-        generateButton.keyEquivalentModifierMask = .command
-        
-        containerView.addSubview(generateButton)
-    }
-    
-    private func setupStatusLabel(at y: CGFloat, width: CGFloat, padding: CGFloat) {
-        statusLabel = NSTextField(labelWithString: "")
-        statusLabel.font = .systemFont(ofSize: 11)
-        statusLabel.textColor = Self.secondaryTextColor
-        statusLabel.alignment = .center
-        statusLabel.frame = NSRect(x: padding, y: y, width: width, height: 20)
-        statusLabel.isHidden = true
-        containerView.addSubview(statusLabel)
+    private func setupErrorLabel(at y: CGFloat, width: CGFloat, padding: CGFloat) {
+        errorLabel = NSTextField(labelWithString: "")
+        errorLabel.font = .systemFont(ofSize: 11)
+        errorLabel.textColor = NSColor.systemRed
+        errorLabel.alignment = .left
+        errorLabel.frame = NSRect(x: padding, y: y, width: width, height: 16)
+        errorLabel.isHidden = true
+        containerView.addSubview(errorLabel)
     }
     
     private func setupResultSection(at y: CGFloat, width: CGFloat, padding: CGFloat) {
-        // Result container with visible background
+        // Result container - clean, no border
         resultContainer = NSView(frame: NSRect(x: padding, y: y, width: width, height: Self.resultHeight))
         resultContainer.wantsLayer = true
         resultContainer.layer?.backgroundColor = Self.inputBgColor.cgColor
-        resultContainer.layer?.cornerRadius = 8
-        resultContainer.layer?.borderWidth = 1
-        resultContainer.layer?.borderColor = NSColor.separatorColor.cgColor
+        resultContainer.layer?.cornerRadius = 12
         resultContainer.isHidden = true
         resultContainer.identifier = NSUserInterfaceItemIdentifier("resultContainer")
         containerView.addSubview(resultContainer)
         
         // Scroll view for result
-        resultScrollView = NSScrollView(frame: NSRect(x: 8, y: 8, width: width - 16, height: Self.resultHeight - 16))
+        resultScrollView = NSScrollView(frame: NSRect(x: 12, y: 12, width: width - 24, height: Self.resultHeight - 24))
         resultScrollView.hasVerticalScroller = true
         resultScrollView.hasHorizontalScroller = false
-        resultScrollView.autohidesScrollers = false
+        resultScrollView.autohidesScrollers = true
         resultScrollView.scrollerStyle = .overlay
         resultScrollView.borderType = .noBorder
         resultScrollView.drawsBackground = false
-        resultScrollView.autoresizingMask = [.width, .height]
         
-        // Result text view with proper scrolling setup
+        // Result text view
         let textStorage = NSTextStorage()
         let layoutManager = NSLayoutManager()
         textStorage.addLayoutManager(layoutManager)
         
-        let textContainer = NSTextContainer(containerSize: NSSize(width: width - 32, height: CGFloat.greatestFiniteMagnitude))
+        let textContainer = NSTextContainer(containerSize: NSSize(width: width - 48, height: CGFloat.greatestFiniteMagnitude))
         textContainer.widthTracksTextView = true
         textContainer.heightTracksTextView = false
         layoutManager.addTextContainer(textContainer)
         
-        resultTextView = NSTextView(frame: NSRect(x: 0, y: 0, width: width - 16, height: Self.resultHeight - 16), textContainer: textContainer)
+        resultTextView = NSTextView(frame: NSRect(x: 0, y: 0, width: width - 24, height: Self.resultHeight - 24), textContainer: textContainer)
         resultTextView.isEditable = false
         resultTextView.isSelectable = true
         resultTextView.isRichText = false
@@ -260,7 +247,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         resultTextView.isVerticallyResizable = true
         resultTextView.isHorizontallyResizable = false
         resultTextView.autoresizingMask = [.width]
-        resultTextView.minSize = NSSize(width: 0, height: Self.resultHeight - 16)
+        resultTextView.minSize = NSSize(width: 0, height: Self.resultHeight - 24)
         resultTextView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         
         resultScrollView.documentView = resultTextView
@@ -268,58 +255,42 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     }
     
     private func setupActionButtons(at y: CGFloat, width: CGFloat, padding: CGFloat) {
-        // Copy button with icon
+        // Icon-only buttons
         copyButton = makeIconButton(symbolName: "doc.on.doc", tooltip: "copy")
         copyButton.target = self
         copyButton.action = #selector(copyButtonClicked)
         
-        // Try again button with icon
-        tryAgainButton = makeIconButton(symbolName: "arrow.clockwise", tooltip: "try again")
+        tryAgainButton = makeIconButton(symbolName: "arrow.clockwise", tooltip: "regenerate")
         tryAgainButton.target = self
         tryAgainButton.action = #selector(tryAgainButtonClicked)
         
-        // Replace button
-        replaceButton = NSButton(frame: .zero)
-        replaceButton.title = "replace"
-        replaceButton.bezelStyle = .rounded
-        replaceButton.font = .systemFont(ofSize: 11)
-        replaceButton.target = self
-        replaceButton.action = #selector(replaceButtonClicked)
-        replaceButton.setFrameSize(NSSize(width: 70, height: 24))
-        
-        // Separator
-        let separator = NSBox(frame: NSRect(x: 0, y: 0, width: 1, height: 20))
-        separator.boxType = .separator
-        
-        // Like button with icon
         likeButton = makeIconButton(symbolName: "hand.thumbsup", tooltip: "helpful")
         likeButton.target = self
         likeButton.action = #selector(likeButtonClicked)
         
-        // Dislike button with icon
         dislikeButton = makeIconButton(symbolName: "hand.thumbsdown", tooltip: "not helpful")
         dislikeButton.target = self
         dislikeButton.action = #selector(dislikeButtonClicked)
         
-        // Stack view: [copy] [try again] [replace] | [like] [dislike]
-        actionButtonsStack = NSStackView(views: [copyButton, tryAgainButton, replaceButton, separator, likeButton, dislikeButton])
+        // Left-aligned action bar (like ChatGPT)
+        actionButtonsStack = NSStackView(views: [copyButton, tryAgainButton, likeButton, dislikeButton])
         actionButtonsStack.orientation = .horizontal
-        actionButtonsStack.spacing = 8
+        actionButtonsStack.spacing = 4
         actionButtonsStack.alignment = .centerY
-        let stackWidth: CGFloat = 280
-        actionButtonsStack.frame = NSRect(x: padding + (width - stackWidth) / 2, y: y, width: stackWidth, height: 24)
+        let stackWidth: CGFloat = 120
+        actionButtonsStack.frame = NSRect(x: padding, y: y, width: stackWidth, height: 24)
         actionButtonsStack.isHidden = true
         containerView.addSubview(actionButtonsStack)
     }
     
     private func makeIconButton(symbolName: String, tooltip: String) -> NSButton {
-        let button = NSButton(frame: NSRect(x: 0, y: 0, width: 28, height: 24))
+        let button = NSButton(frame: NSRect(x: 0, y: 0, width: 26, height: 22))
         button.bezelStyle = .inline
         button.isBordered = false
         button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: tooltip)
         button.contentTintColor = Self.secondaryTextColor
         button.toolTip = tooltip
-        button.setFrameSize(NSSize(width: 28, height: 24))
+        button.setFrameSize(NSSize(width: 26, height: 22))
         return button
     }
     
@@ -330,7 +301,6 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     }
     
     func show() {
-        // Center on screen
         guard let screen = NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
         let x = screenFrame.midX - Self.windowSize.width / 2
@@ -346,7 +316,6 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         
-        // Focus input
         window.makeFirstResponder(inputTextView)
         
         addEventMonitors()
@@ -394,14 +363,14 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         case .idle:
             generateButton.title = "generate"
             generateButton.isEnabled = true
-            statusLabel.isHidden = true
+            errorLabel.isHidden = true
             resultContainer.isHidden = true
             actionButtonsStack.isHidden = true
             
         case .loading:
-            generateButton.title = "generating..."
+            generateButton.title = "..."
             generateButton.isEnabled = false
-            statusLabel.isHidden = true
+            errorLabel.isHidden = true
             resultContainer.isHidden = true
             actionButtonsStack.isHidden = true
             
@@ -409,7 +378,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
             resultText = text
             generateButton.title = "generate"
             generateButton.isEnabled = true
-            statusLabel.isHidden = true
+            errorLabel.isHidden = true
             resultTextView.string = text
             resultContainer.isHidden = false
             actionButtonsStack.isHidden = false
@@ -424,9 +393,8 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         case .error(let message):
             generateButton.title = "generate"
             generateButton.isEnabled = true
-            statusLabel.stringValue = message
-            statusLabel.textColor = NSColor.systemRed
-            statusLabel.isHidden = false
+            errorLabel.stringValue = message
+            errorLabel.isHidden = false
             resultContainer.isHidden = true
             actionButtonsStack.isHidden = true
         }
@@ -449,7 +417,6 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         guard !resultText.isEmpty else { return }
         onCopy?(resultText)
         
-        // Visual feedback - briefly change icon color
         copyButton.contentTintColor = Self.accentColor
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
             self?.copyButton.contentTintColor = Self.secondaryTextColor
@@ -460,17 +427,10 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         onTryAgain?()
     }
     
-    @objc private func replaceButtonClicked() {
-        guard !resultText.isEmpty else { return }
-        onReplace?(resultText)
-        hide()
-    }
-    
     @objc private func likeButtonClicked() {
         guard !resultText.isEmpty, !feedbackSubmitted else { return }
         feedbackSubmitted = true
         
-        // Visual feedback
         likeButton.contentTintColor = NSColor.systemGreen
         dislikeButton.isEnabled = false
         dislikeButton.contentTintColor = Self.secondaryTextColor.withAlphaComponent(0.3)
@@ -482,7 +442,6 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         guard !resultText.isEmpty, !feedbackSubmitted else { return }
         feedbackSubmitted = true
         
-        // Visual feedback
         dislikeButton.contentTintColor = NSColor.systemRed
         likeButton.isEnabled = false
         likeButton.contentTintColor = Self.secondaryTextColor.withAlphaComponent(0.3)
@@ -498,42 +457,31 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         let contentWidth = newSize.width - padding * 2
         
         // Update input container
-        if let inputContainer = containerView.subviews.first(where: { $0.identifier?.rawValue == "inputContainer" }) {
-            inputContainer.frame.size.width = contentWidth
-            inputScrollView.frame.size.width = contentWidth - 16
-            inputTextView.textContainer?.containerSize.width = contentWidth - 32
-        }
+        inputContainer.frame.size.width = contentWidth
+        inputScrollView.frame.size.width = contentWidth - 24
+        inputTextView.textContainer?.containerSize.width = contentWidth - 48
+        generateButton.frame.origin.x = contentWidth - 96
         
-        // Update generate button position
-        generateButton.frame.origin.x = padding + (contentWidth - 120) / 2
-        
-        // Update status label
-        statusLabel.frame.size.width = contentWidth
+        // Update error label
+        errorLabel.frame.size.width = contentWidth
         
         // Update result container
         resultContainer.frame.size.width = contentWidth
-        resultScrollView.frame.size.width = contentWidth - 16
-        resultTextView.textContainer?.containerSize.width = contentWidth - 32
-        
-        // Update action buttons position
-        let stackWidth: CGFloat = 280
-        actionButtonsStack.frame.origin.x = padding + (contentWidth - stackWidth) / 2
+        resultScrollView.frame.size.width = contentWidth - 24
+        resultTextView.textContainer?.containerSize.width = contentWidth - 48
     }
     
     // MARK: - Event Monitors
     
     private func addEventMonitors() {
-        // Local key monitor for Escape and Cmd+Enter
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, self.window.isKeyWindow else { return event }
             
-            // Escape to close
             if event.keyCode == 53 {
                 self.hide()
                 return nil
             }
             
-            // Cmd+Enter to generate
             if event.keyCode == 36 && event.modifierFlags.contains(.command) {
                 self.generateButtonClicked()
                 return nil
@@ -555,6 +503,5 @@ final class EditorWindow: NSObject, NSWindowDelegate {
 
 extension EditorWindow: NSTextViewDelegate {
     nonisolated func textDidChange(_ notification: Notification) {
-        // Could add character count or other feedback here
     }
 }

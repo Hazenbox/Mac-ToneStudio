@@ -172,12 +172,25 @@ final class TooltipWindow {
         panel.contentView = containerView
     }
 
+    // MARK: - Positioning Constants
+    
+    private static let horizontalGap: CGFloat = 4      // Gap between selection and tooltip
+    private static let screenEdgePadding: CGFloat = 8  // Minimum distance from screen edges
+    
     // MARK: - Show / Hide
 
     func show(near cursorRect: CGRect) {
         showInternal(near: cursorRect, state: .collapsed, size: Self.defaultSize)
     }
     
+    /// Show mini icon positioned at the LEFT edge of the selection
+    func showMiniIcon(for selection: SelectionResult) {
+        let size = NSSize(width: Self.miniIconSize, height: Self.miniIconSize)
+        showAtSelectionStart(selection: selection, state: .miniIcon, size: size)
+        startAutoHideTimer(delay: AppConstants.miniIconAutoHideDelay)
+    }
+    
+    /// Legacy method for compatibility - uses cursor rect
     func showMiniIcon(near cursorRect: CGRect) {
         let size = NSSize(width: Self.miniIconSize, height: Self.miniIconSize)
         showInternal(near: cursorRect, state: .miniIcon, size: size, offsetRight: true)
@@ -189,6 +202,124 @@ final class TooltipWindow {
         startAutoHideTimer(delay: AppConstants.noSelectionAutoHideDelay)
     }
     
+    /// Show collapsed tooltip positioned at the LEFT edge of the selection
+    func showCollapsed(for selection: SelectionResult) {
+        showAtSelectionStart(selection: selection, state: .collapsed, size: Self.defaultSize)
+    }
+    
+    // MARK: - Smart Positioning (at LEFT edge of selection)
+    
+    /// Positions the tooltip at the START (left edge) of the text selection
+    /// with intelligent edge handling and flip logic
+    private func showAtSelectionStart(selection: SelectionResult, state: TooltipState, size: NSSize) {
+        cancelAutoHideTimer()
+        
+        let anchorPoint = selection.tooltipAnchorPoint
+        let lineHeight = selection.lineHeight
+        let selectionBounds = selection.firstLineBounds
+        
+        // Find the screen containing the selection
+        let screen = NSScreen.screens.first { $0.frame.contains(anchorPoint) } ?? NSScreen.main!
+        let visibleFrame = screen.visibleFrame
+        
+        // Calculate origin: position to the LEFT of selection start, vertically centered
+        var origin = calculateLeftEdgePosition(
+            anchorPoint: anchorPoint,
+            lineHeight: lineHeight,
+            tooltipSize: size,
+            visibleFrame: visibleFrame
+        )
+        
+        // Check if tooltip overflows left edge - if so, flip to RIGHT side
+        if origin.x < visibleFrame.minX + Self.screenEdgePadding {
+            origin = calculateRightEdgePosition(
+                selectionBounds: selectionBounds,
+                lineHeight: lineHeight,
+                tooltipSize: size,
+                visibleFrame: visibleFrame
+            )
+            Logger.tooltip.info("Flipped tooltip to right side due to left overflow")
+        }
+        
+        // Handle vertical overflow
+        origin = handleVerticalOverflow(origin: origin, size: size, visibleFrame: visibleFrame)
+        
+        // Ensure horizontal bounds
+        origin.x = max(visibleFrame.minX + Self.screenEdgePadding,
+                       min(origin.x, visibleFrame.maxX - size.width - Self.screenEdgePadding))
+        
+        panel.setFrame(NSRect(origin: origin, size: size), display: false)
+        
+        switch state {
+        case .miniIcon:
+            buildMiniIconUI(size: size)
+        case .collapsed:
+            buildCollapsedUI(size: size)
+        default:
+            break
+        }
+        
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.15
+            panel.animator().alphaValue = 1
+        }
+        
+        addEventMonitors()
+        Logger.tooltip.info("Tooltip shown at (\(origin.x), \(origin.y)) state: \(String(describing: state)), hasPreciseBounds: \(selection.hasPreciseBounds)")
+    }
+    
+    /// Calculate position for tooltip to appear at LEFT of selection
+    private func calculateLeftEdgePosition(
+        anchorPoint: CGPoint,
+        lineHeight: CGFloat,
+        tooltipSize: NSSize,
+        visibleFrame: CGRect
+    ) -> CGPoint {
+        // Position tooltip to the LEFT of the anchor point
+        // X: tooltip's right edge aligns with selection's left edge (minus gap)
+        // Y: vertically centered with the text line
+        return CGPoint(
+            x: anchorPoint.x - tooltipSize.width - Self.horizontalGap,
+            y: anchorPoint.y - tooltipSize.height / 2
+        )
+    }
+    
+    /// Calculate position for tooltip to appear at RIGHT of selection (fallback)
+    private func calculateRightEdgePosition(
+        selectionBounds: CGRect,
+        lineHeight: CGFloat,
+        tooltipSize: NSSize,
+        visibleFrame: CGRect
+    ) -> CGPoint {
+        // Position tooltip to the RIGHT of the selection
+        // X: tooltip's left edge aligns with selection's right edge (plus gap)
+        // Y: vertically centered with the text line
+        return CGPoint(
+            x: selectionBounds.maxX + Self.horizontalGap,
+            y: selectionBounds.midY - tooltipSize.height / 2
+        )
+    }
+    
+    /// Handle vertical overflow by adjusting Y position
+    private func handleVerticalOverflow(origin: CGPoint, size: NSSize, visibleFrame: CGRect) -> CGPoint {
+        var adjustedOrigin = origin
+        
+        // Check top overflow
+        if adjustedOrigin.y + size.height > visibleFrame.maxY - Self.screenEdgePadding {
+            adjustedOrigin.y = visibleFrame.maxY - size.height - Self.screenEdgePadding
+        }
+        
+        // Check bottom overflow
+        if adjustedOrigin.y < visibleFrame.minY + Self.screenEdgePadding {
+            adjustedOrigin.y = visibleFrame.minY + Self.screenEdgePadding
+        }
+        
+        return adjustedOrigin
+    }
+    
+    /// Legacy positioning method (for backward compatibility)
     private func showInternal(near cursorRect: CGRect, state: TooltipState, size: NSSize, offsetRight: Bool = false) {
         cancelAutoHideTimer()
         
@@ -198,25 +329,23 @@ final class TooltipWindow {
 
         var origin: CGPoint
         if offsetRight {
+            // Position to the right of cursor (legacy mini icon behavior)
             origin = CGPoint(
                 x: cursorPoint.x + 20,
-                y: cursorPoint.y + 10
+                y: cursorPoint.y - size.height / 2
             )
         } else {
+            // Center above cursor
             origin = CGPoint(
                 x: cursorPoint.x - size.width / 2,
                 y: cursorPoint.y + 16
             )
         }
 
-        origin.x = max(visibleFrame.minX + 8, min(origin.x, visibleFrame.maxX - size.width - 8))
+        origin.x = max(visibleFrame.minX + Self.screenEdgePadding,
+                       min(origin.x, visibleFrame.maxX - size.width - Self.screenEdgePadding))
 
-        if origin.y + size.height > visibleFrame.maxY {
-            origin.y = cursorPoint.y - size.height - 8
-        }
-        if origin.y < visibleFrame.minY + 8 {
-            origin.y = visibleFrame.minY + 8
-        }
+        origin = handleVerticalOverflow(origin: origin, size: size, visibleFrame: visibleFrame)
 
         panel.setFrame(NSRect(origin: origin, size: size), display: false)
         

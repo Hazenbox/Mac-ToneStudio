@@ -27,30 +27,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let inputMonitoringStatus = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent)
         let hasInputMonitoring = (inputMonitoringStatus == kIOHIDAccessTypeGranted)
         
+        // Use NSLog for immediate output that always shows
+        NSLog("🚀 ToneStudio launched")
+        NSLog("   Accessibility: %d", isTrusted ? 1 : 0)
+        NSLog("   Input Monitoring: %d (status: %d)", hasInputMonitoring ? 1 : 0, inputMonitoringStatus.rawValue)
+        
         Logger.permissions.info("App launched — Accessibility: \(isTrusted), Input Monitoring: \(hasInputMonitoring)")
         
         // Register macOS Services
         registerServices()
         
-        // Check both permissions
-        let hasAllPermissions = isTrusted && hasInputMonitoring
+        // Always start monitoring - let it fail gracefully if permissions missing
+        // This allows hotkeys to work even if event tap fails
+        NSLog("📡 Starting monitoring...")
+        startMonitoring()
         
-        if hasAllPermissions {
-            startMonitoring()
-        } else {
-            // Request missing permissions
-            if !hasInputMonitoring {
-                Logger.permissions.info("Requesting Input Monitoring permission...")
-                _ = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
-            }
-            
-            if !isTrusted {
-                permissionsManager.openAccessibilitySettingsDirectly()
-            } else {
-                permissionsManager.openInputMonitoringSettings()
-            }
-            
+        // If permissions missing, also open settings
+        if !isTrusted {
+            NSLog("⚠️ Accessibility not granted - opening settings")
+            permissionsManager.openAccessibilitySettingsDirectly()
             permissionsManager.startPolling()
+        }
+        
+        if !hasInputMonitoring {
+            NSLog("⚠️ Input Monitoring not granted - requesting")
+            _ = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
         }
 
         NotificationCenter.default.addObserver(
@@ -60,7 +61,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             guard let self else { return }
             MainActor.assumeIsolated {
-                self.startMonitoring()
+                print("✅ Accessibility permission granted notification received")
+                self.restartMonitoring()
             }
         }
     }
@@ -84,22 +86,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Start monitoring
 
     private func startMonitoring() {
+        NSLog("📡 startMonitoring() called")
+        
         selectionMonitor.start { [weak self] result in
             guard let self else { return }
+            NSLog("📝 Selection detected: %@...", String(result.text.prefix(50)))
             self.handleSelection(result)
         }
         
         hotkeyManager.start(
             callback: { [weak self] in
+                NSLog("⌨️ Rephrase hotkey triggered!")
                 self?.handleHotkeyTrigger()
             },
             editorCallback: { [weak self] in
+                NSLog("⌨️ Editor hotkey triggered!")
                 self?.handleEditorHotkey()
             }
         )
         
         setupEditorCallbacks()
         
+        NSLog("✅ Monitoring started successfully")
         Logger.permissions.info("Selection monitoring active")
     }
     
@@ -114,6 +122,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: - Selection handling
+    
+    private var lastSelectionResult: SelectionResult?
 
     private func handleSelection(_ result: SelectionResult) {
         // Don't show tooltip when editor window is visible
@@ -122,8 +132,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         
         // Don't interfere if click is inside the tooltip window
+        let clickPoint = result.tooltipAnchorPoint
         if tooltipWindow.isVisible,
-           tooltipWindow.windowFrame.contains(CGPoint(x: result.screenRect.midX, y: result.screenRect.midY)) {
+           tooltipWindow.windowFrame.contains(clickPoint) {
             return
         }
 
@@ -138,7 +149,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Update state
         selectedText = result.text
-        lastSelectionRect = result.screenRect
+        lastSelectionRect = result.selectionBounds
+        lastSelectionResult = result
 
         // Hide existing tooltip before showing new one
         if tooltipWindow.isVisible {
@@ -150,7 +162,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             // Double-check editor isn't visible after delay
             guard !self.editorWindow.isVisible else { return }
-            self.tooltipWindow.showMiniIcon(near: result.screenRect)
+            // Use the new smart positioning method
+            self.tooltipWindow.showMiniIcon(for: result)
             self.setupTooltipCallbacks()
         }
     }

@@ -6,7 +6,29 @@ import IOKit.hid
 
 struct SelectionResult {
     let text: String
-    let screenRect: CGRect
+    let selectionBounds: CGRect      // Full selection bounds (from AX API or fallback)
+    let firstLineBounds: CGRect      // Bounds of first line (for multi-line selections)
+    let fallbackPoint: CGPoint       // Mouse position as fallback
+    let hasPreciseBounds: Bool       // Whether we got real AX bounds or using fallback
+    
+    /// The position where tooltip should appear (left edge of first line)
+    var tooltipAnchorPoint: CGPoint {
+        if hasPreciseBounds {
+            // Left edge of the first line, vertically centered
+            return CGPoint(
+                x: firstLineBounds.minX,
+                y: firstLineBounds.midY
+            )
+        } else {
+            // Fallback to mouse position
+            return fallbackPoint
+        }
+    }
+    
+    /// Height of the selection's first line (for vertical alignment)
+    var lineHeight: CGFloat {
+        return hasPreciseBounds ? firstLineBounds.height : 20
+    }
 }
 
 @MainActor
@@ -22,6 +44,7 @@ final class SelectionMonitor {
     private var healthCheckTimer: Timer?
     
     private let textManager = SelectedTextManager.shared
+    private let accessibilityManager = AccessibilityManager()
 
     func start(callback: @escaping SelectionCallback) {
         self.callback = callback
@@ -30,15 +53,20 @@ final class SelectionMonitor {
         let inputMonitoringStatus = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent)
         let hasInputMonitoring = (inputMonitoringStatus == kIOHIDAccessTypeGranted)
         
+        NSLog("👁️ SelectionMonitor.start()")
+        NSLog("   Accessibility: %d", isTrusted ? 1 : 0)
+        NSLog("   Input Monitoring: %d (status: %d)", hasInputMonitoring ? 1 : 0, inputMonitoringStatus.rawValue)
+        
         Logger.selection.info("SelectionMonitor starting — AXIsProcessTrusted: \(isTrusted), InputMonitoring: \(hasInputMonitoring) (status: \(inputMonitoringStatus.rawValue))")
         
         if !hasInputMonitoring {
-            Logger.selection.warning("Input Monitoring permission not granted - requesting...")
+            NSLog("   ⚠️ Input Monitoring not granted - requesting...")
             let granted = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
-            Logger.selection.info("Input Monitoring request result: \(granted)")
+            NSLog("   Request result: %d", granted ? 1 : 0)
         }
         
         // Delay tap installation slightly to help with Launch Services timing issues
+        NSLog("   ⏳ Will install event tap in 0.5s...")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.startEventTap()
         }
@@ -120,6 +148,8 @@ final class SelectionMonitor {
     // MARK: - CGEventTap (runs on background thread)
 
     private func startEventTap(retryCount: Int = 0) {
+        NSLog("👁️ startEventTap() called (retry: %d)", retryCount)
+        
         let monitor = self
         let thread = Thread {
             let mask = CGEventMask(1 << CGEventType.leftMouseUp.rawValue)
@@ -135,6 +165,7 @@ final class SelectionMonitor {
                     let monitor = Unmanaged<SelectionMonitor>.fromOpaque(refcon).takeUnretainedValue()
 
                     if type == .tapDisabledByTimeout {
+                        NSLog("👁️ Event tap disabled by timeout - re-enabling")
                         DispatchQueue.main.async {
                             monitor.reEnableTapIfNeeded()
                         }
@@ -142,6 +173,7 @@ final class SelectionMonitor {
                     }
 
                     if type == .leftMouseUp {
+                        NSLog("👁️ Mouse up detected!")
                         let mousePos = event.location
                         DispatchQueue.main.async {
                             monitor.handleMouseUp(mousePosition: mousePos)
@@ -154,12 +186,16 @@ final class SelectionMonitor {
             ) else {
                 DispatchQueue.main.async {
                     let isTrusted = AXIsProcessTrusted()
+                    NSLog("❌ Failed to create CGEventTap — Accessibility: %d, retry: %d", isTrusted ? 1 : 0, retryCount)
                     Logger.selection.error("Failed to create CGEventTap — AXIsProcessTrusted: \(isTrusted), retry: \(retryCount)")
                     
                     if retryCount < 3 {
+                        NSLog("   Retrying in 1 second...")
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                             monitor.startEventTap(retryCount: retryCount + 1)
                         }
+                    } else {
+                        NSLog("❌ Giving up on event tap after 3 retries")
                     }
                 }
                 return
@@ -168,9 +204,12 @@ final class SelectionMonitor {
             let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
             CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
             CGEvent.tapEnable(tap: tap, enable: true)
+            
+            let isEnabled = CGEvent.tapIsEnabled(tap: tap)
 
             DispatchQueue.main.async {
                 monitor.machPort = tap
+                NSLog("✅ CGEventTap created! Enabled: %d", isEnabled ? 1 : 0)
                 Logger.selection.info("CGEventTap created successfully")
             }
 
@@ -250,10 +289,33 @@ final class SelectionMonitor {
                 }
                 
                 let appKitMousePos = cgPointToAppKit(lastMousePosition)
-                let selectionRect = CGRect(x: appKitMousePos.x, y: appKitMousePos.y, width: 1, height: 1)
+                
+                // Try to get precise selection bounds from Accessibility API
+                let result: SelectionResult
+                if let bounds = accessibilityManager.getSelectionBounds() {
+                    Logger.selection.info("Got precise selection bounds: \(String(describing: bounds.rect))")
+                    result = SelectionResult(
+                        text: trimmedText,
+                        selectionBounds: bounds.rect,
+                        firstLineBounds: bounds.firstLineRect,
+                        fallbackPoint: appKitMousePos,
+                        hasPreciseBounds: true
+                    )
+                } else {
+                    // Fallback to mouse position
+                    Logger.selection.info("Using mouse position as fallback for bounds")
+                    let fallbackRect = CGRect(x: appKitMousePos.x, y: appKitMousePos.y, width: 1, height: 20)
+                    result = SelectionResult(
+                        text: trimmedText,
+                        selectionBounds: fallbackRect,
+                        firstLineBounds: fallbackRect,
+                        fallbackPoint: appKitMousePos,
+                        hasPreciseBounds: false
+                    )
+                }
                 
                 Logger.selection.info("Got selected text via SelectedTextKit (\(trimmedText.count) chars)")
-                callback?(SelectionResult(text: trimmedText, screenRect: selectionRect))
+                callback?(result)
             } else {
                 Logger.selection.debug("No text selected")
             }

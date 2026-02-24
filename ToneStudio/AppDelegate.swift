@@ -89,27 +89,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         
+        // Don't interfere if click is inside the tooltip window
         if tooltipWindow.isVisible,
            tooltipWindow.windowFrame.contains(CGPoint(x: result.screenRect.midX, y: result.screenRect.midY)) {
             return
         }
 
+        // Don't reset if we're already interacting with the same text
         if tooltipWindow.isVisible && tooltipWindow.isInteracting && result.text == selectedText {
             return
         }
 
+        // Cancel any pending tasks before changing state
         currentTask?.cancel()
         currentTask = nil
 
+        // Update state
         selectedText = result.text
         lastSelectionRect = result.screenRect
 
+        // Hide existing tooltip before showing new one
         if tooltipWindow.isVisible {
             tooltipWindow.hide()
         }
 
-        tooltipWindow.showMiniIcon(near: result.screenRect)
-        setupTooltipCallbacks()
+        // Small delay to ensure clean state transition
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self else { return }
+            // Double-check editor isn't visible after delay
+            guard !self.editorWindow.isVisible else { return }
+            self.tooltipWindow.showMiniIcon(near: result.screenRect)
+            self.setupTooltipCallbacks()
+        }
     }
     
     // MARK: - Hotkey handling
@@ -202,23 +213,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         tooltipWindow.onReplace = { [weak self] text in
             self?.accessibilityManager.replaceSelectedText(with: text)
-            self?.tooltipWindow.hide()
+            self?.cleanupTooltipState()
         }
 
         tooltipWindow.onCopy = { [weak self] text in
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
-            self?.tooltipWindow.hide()
+            self?.cleanupTooltipState()
         }
 
         tooltipWindow.onCancel = { [weak self] in
-            self?.currentTask?.cancel()
-            self?.currentTask = nil
+            self?.cleanupTooltipState()
         }
 
         tooltipWindow.onRetry = { [weak self] in
             self?.performRephrase()
         }
+    }
+    
+    private func cleanupTooltipState() {
+        currentTask?.cancel()
+        currentTask = nil
+        tooltipWindow.hide()
     }
 
     // MARK: - Rephrase
@@ -252,6 +268,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             editorWindow.hide()
             return
         }
+        
+        // Always hide tooltip first to clean up state
+        if tooltipWindow.isVisible {
+            tooltipWindow.hide()
+        }
+        
+        // Cancel any pending tooltip tasks
+        currentTask?.cancel()
+        currentTask = nil
         
         // Try to get selected text to pre-fill
         let text = getSelectedTextViaClipboard()

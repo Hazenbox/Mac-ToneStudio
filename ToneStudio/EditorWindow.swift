@@ -1,17 +1,10 @@
 import Cocoa
 import OSLog
 
-// MARK: - Custom NSPanel that can become key for text input
-
-final class KeyablePanel: NSPanel {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
-}
-
 // MARK: - Editor Window
 
 @MainActor
-final class EditorWindow: NSObject {
+final class EditorWindow: NSObject, NSWindowDelegate {
     
     // MARK: Callbacks
     var onGenerate: ((String) -> Void)?
@@ -33,11 +26,10 @@ final class EditorWindow: NSObject {
     private var currentState: EditorState = .idle
     private var resultText: String = ""
     
-    // MARK: Panel & Views
-    private let panel: KeyablePanel
-    private let containerView: NSVisualEffectView
+    // MARK: Window & Views
+    private let window: NSWindow
+    private let containerView: NSView
     
-    private var avatarImageView: NSImageView!
     private var inputTextView: NSTextView!
     private var inputScrollView: NSScrollView!
     private var generateButton: NSButton!
@@ -48,29 +40,24 @@ final class EditorWindow: NSObject {
     private var tryAgainButton: NSButton!
     private var likeButton: NSButton!
     private var dislikeButton: NSButton!
-    private var closeButton: NSButton!
     private var feedbackSubmitted: Bool = false
-    private var titleLabel: NSTextField!
-    private var loadingIndicator: NSProgressIndicator!
     private var statusLabel: NSTextField!
     private var resultContainer: NSView!
     private var actionButtonsStack: NSStackView!
     
     // MARK: Event monitors
     private var localKeyMonitor: Any?
-    private var globalClickMonitor: Any?
     
     // MARK: Sizing
-    private static let windowSize = NSSize(width: 500, height: 340)
-    private static let minSize = NSSize(width: 400, height: 300)
-    private static let maxSize = NSSize(width: 800, height: 600)
-    private static let cornerRadius: CGFloat = 16
+    private static let windowSize = NSSize(width: 500, height: 380)
+    private static let minSize = NSSize(width: 400, height: 320)
+    private static let maxSize = NSSize(width: 800, height: 700)
     private static let padding: CGFloat = 20
-    private static let inputHeight: CGFloat = 120
-    private static let resultHeight: CGFloat = 100
+    private static let inputHeight: CGFloat = 140
+    private static let resultHeight: CGFloat = 120
     
     // MARK: Colors
-    private static let inputBgColor = NSColor.textBackgroundColor.withAlphaComponent(0.3)
+    private static let inputBgColor = NSColor.controlBackgroundColor
     private static let accentColor = NSColor.controlAccentColor
     private static let textColor = NSColor.labelColor
     private static let secondaryTextColor = NSColor.secondaryLabelColor
@@ -78,31 +65,26 @@ final class EditorWindow: NSObject {
     // MARK: - Init
     
     override init() {
-        panel = KeyablePanel(
+        window = NSWindow(
             contentRect: NSRect(origin: .zero, size: Self.windowSize),
-            styleMask: [.borderless, .nonactivatingPanel, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         
-        containerView = NSVisualEffectView()
-        containerView.material = .hudWindow
-        containerView.blendingMode = .behindWindow
-        containerView.state = .active
+        containerView = NSView()
         containerView.wantsLayer = true
-        containerView.layer?.cornerRadius = Self.cornerRadius
-        containerView.layer?.masksToBounds = true
         
         super.init()
         
-        setupPanel()
+        setupWindow()
         setupUI()
         
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(windowDidResize(_:)),
             name: NSWindow.didResizeNotification,
-            object: panel
+            object: window
         )
     }
     
@@ -110,23 +92,21 @@ final class EditorWindow: NSObject {
         NotificationCenter.default.removeObserver(self)
     }
     
-    // MARK: - Panel Setup
+    // MARK: - Window Setup
     
-    private func setupPanel() {
-        panel.level = .floating
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
-        panel.hidesOnDeactivate = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.animationBehavior = .utilityWindow
-        panel.isMovableByWindowBackground = true
-        panel.minSize = Self.minSize
-        panel.maxSize = Self.maxSize
+    private func setupWindow() {
+        window.title = "Tone Studio"
+        window.isOpaque = true
+        window.backgroundColor = NSColor.windowBackgroundColor
+        window.hasShadow = true
+        window.collectionBehavior = [.managed, .fullScreenAuxiliary]
+        window.minSize = Self.minSize
+        window.maxSize = Self.maxSize
+        window.delegate = self
         
         containerView.frame = NSRect(origin: .zero, size: Self.windowSize)
         containerView.autoresizingMask = [.width, .height]
-        panel.contentView = containerView
+        window.contentView = containerView
     }
     
     // MARK: - UI Setup
@@ -136,12 +116,7 @@ final class EditorWindow: NSObject {
         let contentWidth = Self.windowSize.width - padding * 2
         var yOffset = Self.windowSize.height - padding
         
-        // Title bar with avatar and close button
-        yOffset -= 28
-        setupTitleBar(at: yOffset, width: contentWidth, padding: padding)
-        
         // Input section
-        yOffset -= 16
         yOffset -= Self.inputHeight
         setupInputSection(at: yOffset, width: contentWidth, padding: padding)
         
@@ -150,10 +125,10 @@ final class EditorWindow: NSObject {
         yOffset -= 32
         setupGenerateButton(at: yOffset, width: contentWidth, padding: padding)
         
-        // Status / Loading
+        // Status label (for errors only)
         yOffset -= 8
         yOffset -= 20
-        setupStatusArea(at: yOffset, width: contentWidth, padding: padding)
+        setupStatusLabel(at: yOffset, width: contentWidth, padding: padding)
         
         // Result section
         yOffset -= 8
@@ -167,74 +142,63 @@ final class EditorWindow: NSObject {
         updateUIForState()
     }
     
-    private func setupTitleBar(at y: CGFloat, width: CGFloat, padding: CGFloat) {
-        // Avatar
-        let avatarSize: CGFloat = 24
-        avatarImageView = makeAvatarImageView(size: avatarSize)
-        avatarImageView.frame = NSRect(x: padding, y: y + 2, width: avatarSize, height: avatarSize)
-        containerView.addSubview(avatarImageView)
-        
-        // Title (beside avatar)
-        titleLabel = NSTextField(labelWithString: "Tone Studio")
-        titleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
-        titleLabel.textColor = Self.textColor
-        titleLabel.frame = NSRect(x: padding + avatarSize + 10, y: y + 4, width: width - avatarSize - 40, height: 20)
-        containerView.addSubview(titleLabel)
-        
-        // Close button (right side)
-        closeButton = NSButton(frame: NSRect(x: Self.windowSize.width - padding - 20, y: y + 4, width: 20, height: 20))
-        closeButton.bezelStyle = .inline
-        closeButton.isBordered = false
-        closeButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Close")
-        closeButton.contentTintColor = Self.secondaryTextColor
-        closeButton.target = self
-        closeButton.action = #selector(closeButtonClicked)
-        containerView.addSubview(closeButton)
-    }
-    
     private func setupInputSection(at y: CGFloat, width: CGFloat, padding: CGFloat) {
-        // Input container - no border, subtle background
+        // Input container with visible background
         let inputContainer = NSView(frame: NSRect(x: padding, y: y, width: width, height: Self.inputHeight))
         inputContainer.wantsLayer = true
         inputContainer.layer?.backgroundColor = Self.inputBgColor.cgColor
-        inputContainer.layer?.cornerRadius = 10
+        inputContainer.layer?.cornerRadius = 8
+        inputContainer.layer?.borderWidth = 1
+        inputContainer.layer?.borderColor = NSColor.separatorColor.cgColor
         inputContainer.identifier = NSUserInterfaceItemIdentifier("inputContainer")
         containerView.addSubview(inputContainer)
         
         // Scroll view for text
-        inputScrollView = NSScrollView(frame: NSRect(x: 10, y: 10, width: width - 20, height: Self.inputHeight - 20))
+        inputScrollView = NSScrollView(frame: NSRect(x: 8, y: 8, width: width - 16, height: Self.inputHeight - 16))
         inputScrollView.hasVerticalScroller = true
         inputScrollView.hasHorizontalScroller = false
-        inputScrollView.autohidesScrollers = true
+        inputScrollView.autohidesScrollers = false
+        inputScrollView.scrollerStyle = .overlay
         inputScrollView.borderType = .noBorder
         inputScrollView.drawsBackground = false
         inputScrollView.autoresizingMask = [.width, .height]
         
-        // Text view
-        inputTextView = NSTextView(frame: inputScrollView.bounds)
+        // Text view with proper scrolling setup
+        let textStorage = NSTextStorage()
+        let layoutManager = NSLayoutManager()
+        textStorage.addLayoutManager(layoutManager)
+        
+        let textContainer = NSTextContainer(containerSize: NSSize(width: width - 32, height: CGFloat.greatestFiniteMagnitude))
+        textContainer.widthTracksTextView = true
+        textContainer.heightTracksTextView = false
+        layoutManager.addTextContainer(textContainer)
+        
+        inputTextView = NSTextView(frame: NSRect(x: 0, y: 0, width: width - 16, height: Self.inputHeight - 16), textContainer: textContainer)
         inputTextView.isEditable = true
         inputTextView.isSelectable = true
         inputTextView.isRichText = false
-        inputTextView.font = .systemFont(ofSize: 13)
+        inputTextView.font = .systemFont(ofSize: 14)
         inputTextView.textColor = Self.textColor
         inputTextView.backgroundColor = .clear
         inputTextView.drawsBackground = false
         inputTextView.isVerticallyResizable = true
         inputTextView.isHorizontallyResizable = false
-        inputTextView.textContainer?.widthTracksTextView = true
-        inputTextView.textContainer?.containerSize = NSSize(width: width - 36, height: .greatestFiniteMagnitude)
+        inputTextView.autoresizingMask = [.width]
+        inputTextView.minSize = NSSize(width: 0, height: Self.inputHeight - 16)
+        inputTextView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         inputTextView.delegate = self
         inputTextView.insertionPointColor = Self.accentColor
+        inputTextView.allowsUndo = true
         
         inputScrollView.documentView = inputTextView
         inputContainer.addSubview(inputScrollView)
     }
     
     private func setupGenerateButton(at y: CGFloat, width: CGFloat, padding: CGFloat) {
-        generateButton = NSButton(frame: NSRect(x: padding + (width - 100) / 2, y: y, width: 100, height: 28))
+        generateButton = NSButton(frame: NSRect(x: padding + (width - 120) / 2, y: y, width: 120, height: 32))
         generateButton.title = "generate"
         generateButton.bezelStyle = .rounded
-        generateButton.font = .systemFont(ofSize: 12, weight: .medium)
+        generateButton.font = .systemFont(ofSize: 13, weight: .medium)
         generateButton.target = self
         generateButton.action = #selector(generateButtonClicked)
         generateButton.keyEquivalent = "\r"
@@ -243,15 +207,7 @@ final class EditorWindow: NSObject {
         containerView.addSubview(generateButton)
     }
     
-    private func setupStatusArea(at y: CGFloat, width: CGFloat, padding: CGFloat) {
-        // Loading indicator
-        loadingIndicator = NSProgressIndicator(frame: NSRect(x: padding + (width - 20) / 2, y: y, width: 20, height: 20))
-        loadingIndicator.style = .spinning
-        loadingIndicator.controlSize = .small
-        loadingIndicator.isHidden = true
-        containerView.addSubview(loadingIndicator)
-        
-        // Status label
+    private func setupStatusLabel(at y: CGFloat, width: CGFloat, padding: CGFloat) {
         statusLabel = NSTextField(labelWithString: "")
         statusLabel.font = .systemFont(ofSize: 11)
         statusLabel.textColor = Self.secondaryTextColor
@@ -262,37 +218,50 @@ final class EditorWindow: NSObject {
     }
     
     private func setupResultSection(at y: CGFloat, width: CGFloat, padding: CGFloat) {
-        // Result container - no border, subtle background
+        // Result container with visible background
         resultContainer = NSView(frame: NSRect(x: padding, y: y, width: width, height: Self.resultHeight))
         resultContainer.wantsLayer = true
         resultContainer.layer?.backgroundColor = Self.inputBgColor.cgColor
-        resultContainer.layer?.cornerRadius = 10
+        resultContainer.layer?.cornerRadius = 8
+        resultContainer.layer?.borderWidth = 1
+        resultContainer.layer?.borderColor = NSColor.separatorColor.cgColor
         resultContainer.isHidden = true
         resultContainer.identifier = NSUserInterfaceItemIdentifier("resultContainer")
         containerView.addSubview(resultContainer)
         
         // Scroll view for result
-        resultScrollView = NSScrollView(frame: NSRect(x: 10, y: 10, width: width - 20, height: Self.resultHeight - 20))
+        resultScrollView = NSScrollView(frame: NSRect(x: 8, y: 8, width: width - 16, height: Self.resultHeight - 16))
         resultScrollView.hasVerticalScroller = true
         resultScrollView.hasHorizontalScroller = false
-        resultScrollView.autohidesScrollers = true
+        resultScrollView.autohidesScrollers = false
+        resultScrollView.scrollerStyle = .overlay
         resultScrollView.borderType = .noBorder
         resultScrollView.drawsBackground = false
         resultScrollView.autoresizingMask = [.width, .height]
         
-        // Result text view
-        resultTextView = NSTextView(frame: resultScrollView.bounds)
+        // Result text view with proper scrolling setup
+        let textStorage = NSTextStorage()
+        let layoutManager = NSLayoutManager()
+        textStorage.addLayoutManager(layoutManager)
+        
+        let textContainer = NSTextContainer(containerSize: NSSize(width: width - 32, height: CGFloat.greatestFiniteMagnitude))
+        textContainer.widthTracksTextView = true
+        textContainer.heightTracksTextView = false
+        layoutManager.addTextContainer(textContainer)
+        
+        resultTextView = NSTextView(frame: NSRect(x: 0, y: 0, width: width - 16, height: Self.resultHeight - 16), textContainer: textContainer)
         resultTextView.isEditable = false
         resultTextView.isSelectable = true
         resultTextView.isRichText = false
-        resultTextView.font = .systemFont(ofSize: 13)
+        resultTextView.font = .systemFont(ofSize: 14)
         resultTextView.textColor = Self.textColor
         resultTextView.backgroundColor = .clear
         resultTextView.drawsBackground = false
         resultTextView.isVerticallyResizable = true
         resultTextView.isHorizontallyResizable = false
-        resultTextView.textContainer?.widthTracksTextView = true
-        resultTextView.textContainer?.containerSize = NSSize(width: width - 36, height: .greatestFiniteMagnitude)
+        resultTextView.autoresizingMask = [.width]
+        resultTextView.minSize = NSSize(width: 0, height: Self.resultHeight - 16)
+        resultTextView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         
         resultScrollView.documentView = resultTextView
         resultContainer.addSubview(resultScrollView)
@@ -354,23 +323,10 @@ final class EditorWindow: NSObject {
         return button
     }
     
-    // MARK: - Avatar Helper
-    
-    private func makeAvatarImageView(size: CGFloat) -> NSImageView {
-        let imageView = NSImageView(frame: NSRect(x: 0, y: 0, width: size, height: size))
-        imageView.image = NSImage(named: "ai_avatar")
-        imageView.imageScaling = .scaleProportionallyUpOrDown
-        imageView.imageAlignment = .alignCenter
-        imageView.wantsLayer = true
-        imageView.layer?.cornerRadius = size / 2
-        imageView.layer?.masksToBounds = true
-        return imageView
-    }
-    
     // MARK: - Show / Hide
     
     var isVisible: Bool {
-        panel.isVisible
+        window.isVisible
     }
     
     func show() {
@@ -378,27 +334,20 @@ final class EditorWindow: NSObject {
         guard let screen = NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
         let x = screenFrame.midX - Self.windowSize.width / 2
-        let y = screenFrame.midY - Self.windowSize.height / 2 + 100 // Slightly above center
+        let y = screenFrame.midY - Self.windowSize.height / 2 + 50
         
-        panel.setFrame(NSRect(x: x, y: y, width: Self.windowSize.width, height: Self.windowSize.height), display: false)
+        window.setFrame(NSRect(x: x, y: y, width: Self.windowSize.width, height: Self.windowSize.height), display: false)
         
         // Reset state
         currentState = .idle
         inputTextView.string = ""
         updateUIForState()
         
-        // Show with animation
-        panel.alphaValue = 0
-        panel.orderFrontRegardless()
-        panel.makeKey()
-        
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.15
-            panel.animator().alphaValue = 1
-        }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
         
         // Focus input
-        panel.makeFirstResponder(inputTextView)
+        window.makeFirstResponder(inputTextView)
         
         addEventMonitors()
         Logger.editor.info("Editor window shown")
@@ -411,14 +360,7 @@ final class EditorWindow: NSObject {
     
     func hide() {
         removeEventMonitors()
-        
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.1
-            panel.animator().alphaValue = 0
-        }, completionHandler: { [weak self] in
-            self?.panel.orderOut(nil)
-        })
-        
+        window.orderOut(nil)
         onClose?()
         Logger.editor.info("Editor window hidden")
     }
@@ -428,6 +370,15 @@ final class EditorWindow: NSObject {
             hide()
         } else {
             show()
+        }
+    }
+    
+    // MARK: - NSWindowDelegate
+    
+    nonisolated func windowWillClose(_ notification: Notification) {
+        MainActor.assumeIsolated {
+            removeEventMonitors()
+            onClose?()
         }
     }
     
@@ -441,32 +392,27 @@ final class EditorWindow: NSObject {
     private func updateUIForState() {
         switch currentState {
         case .idle:
-            loadingIndicator.stopAnimation(nil)
-            loadingIndicator.isHidden = true
+            generateButton.title = "generate"
+            generateButton.isEnabled = true
             statusLabel.isHidden = true
             resultContainer.isHidden = true
             actionButtonsStack.isHidden = true
-            generateButton.isEnabled = true
             
         case .loading:
-            loadingIndicator.isHidden = false
-            loadingIndicator.startAnimation(nil)
-            statusLabel.stringValue = "generating..."
-            statusLabel.textColor = Self.secondaryTextColor
-            statusLabel.isHidden = false
+            generateButton.title = "generating..."
+            generateButton.isEnabled = false
+            statusLabel.isHidden = true
             resultContainer.isHidden = true
             actionButtonsStack.isHidden = true
-            generateButton.isEnabled = false
             
         case .result(let text):
             resultText = text
-            loadingIndicator.stopAnimation(nil)
-            loadingIndicator.isHidden = true
+            generateButton.title = "generate"
+            generateButton.isEnabled = true
             statusLabel.isHidden = true
             resultTextView.string = text
             resultContainer.isHidden = false
             actionButtonsStack.isHidden = false
-            generateButton.isEnabled = true
             
             // Reset feedback state
             feedbackSubmitted = false
@@ -476,14 +422,13 @@ final class EditorWindow: NSObject {
             dislikeButton.contentTintColor = Self.secondaryTextColor
             
         case .error(let message):
-            loadingIndicator.stopAnimation(nil)
-            loadingIndicator.isHidden = true
+            generateButton.title = "generate"
+            generateButton.isEnabled = true
             statusLabel.stringValue = message
             statusLabel.textColor = NSColor.systemRed
             statusLabel.isHidden = false
             resultContainer.isHidden = true
             actionButtonsStack.isHidden = true
-            generateButton.isEnabled = true
         }
     }
     
@@ -545,42 +490,30 @@ final class EditorWindow: NSObject {
         onDislike?(resultText)
     }
     
-    @objc private func closeButtonClicked() {
-        hide()
-    }
-    
     // MARK: - Window Resize
     
-    @objc private func windowDidResize(_ notification: Notification) {
-        let newSize = panel.frame.size
+    @objc func windowDidResize(_ notification: Notification) {
+        let newSize = window.frame.size
         let padding = Self.padding
         let contentWidth = newSize.width - padding * 2
-        
-        // Update close button position
-        closeButton.frame.origin.x = newSize.width - padding - 20
-        
-        // Update title label width
-        let avatarSize: CGFloat = 24
-        titleLabel.frame.size.width = contentWidth - avatarSize - 40
         
         // Update input container
         if let inputContainer = containerView.subviews.first(where: { $0.identifier?.rawValue == "inputContainer" }) {
             inputContainer.frame.size.width = contentWidth
-            inputScrollView.frame.size.width = contentWidth - 20
-            inputTextView.textContainer?.containerSize.width = contentWidth - 36
+            inputScrollView.frame.size.width = contentWidth - 16
+            inputTextView.textContainer?.containerSize.width = contentWidth - 32
         }
         
         // Update generate button position
-        generateButton.frame.origin.x = padding + (contentWidth - 100) / 2
+        generateButton.frame.origin.x = padding + (contentWidth - 120) / 2
         
-        // Update status area
-        loadingIndicator.frame.origin.x = padding + (contentWidth - 20) / 2
+        // Update status label
         statusLabel.frame.size.width = contentWidth
         
         // Update result container
         resultContainer.frame.size.width = contentWidth
-        resultScrollView.frame.size.width = contentWidth - 20
-        resultTextView.textContainer?.containerSize.width = contentWidth - 36
+        resultScrollView.frame.size.width = contentWidth - 16
+        resultTextView.textContainer?.containerSize.width = contentWidth - 32
         
         // Update action buttons position
         let stackWidth: CGFloat = 280
@@ -592,7 +525,7 @@ final class EditorWindow: NSObject {
     private func addEventMonitors() {
         // Local key monitor for Escape and Cmd+Enter
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, self.panel.isKeyWindow else { return event }
+            guard let self, self.window.isKeyWindow else { return event }
             
             // Escape to close
             if event.keyCode == 53 {
@@ -608,28 +541,12 @@ final class EditorWindow: NSObject {
             
             return event
         }
-        
-        // Global click monitor to detect clicks outside
-        globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            guard let self, self.isVisible else { return }
-            
-            // Convert to screen coordinates
-            let screenPoint = NSEvent.mouseLocation
-            
-            if !self.panel.frame.contains(screenPoint) {
-                self.hide()
-            }
-        }
     }
     
     private func removeEventMonitors() {
         if let monitor = localKeyMonitor {
             NSEvent.removeMonitor(monitor)
             localKeyMonitor = nil
-        }
-        if let monitor = globalClickMonitor {
-            NSEvent.removeMonitor(monitor)
-            globalClickMonitor = nil
         }
     }
 }

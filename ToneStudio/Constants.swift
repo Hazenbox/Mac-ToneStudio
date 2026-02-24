@@ -4,7 +4,13 @@ enum AppConstants {
     // MARK: - API
     nonisolated(unsafe) static let rewriteBaseURL = "https://majestic-mockingbird-289.eu-west-1.convex.site"
     nonisolated(unsafe) static let rewriteEndpoint = "/api/rewrite"
+    nonisolated(unsafe) static let feedbackEndpoint = "/api/feedback"
     nonisolated(unsafe) static let requestTimeoutSeconds: TimeInterval = 15
+    
+    // MARK: - Feedback
+    nonisolated(unsafe) static let feedbackEcosystem = "mac-tonestudio"
+    nonisolated(unsafe) static let feedbackChannel = "editor"
+    nonisolated(unsafe) static let feedbackPersona = "professional"
     
     // MARK: - Text Selection
     nonisolated(unsafe) static let minSelectionLength = 3

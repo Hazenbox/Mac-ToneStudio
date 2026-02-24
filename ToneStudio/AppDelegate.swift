@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let tooltipWindow = TooltipWindow()
     let editorWindow = EditorWindow()
     let rewriteService = RewriteService()
+    let feedbackService = FeedbackService()
     let accessibilityManager = AccessibilityManager()
     let hotkeyManager = HotkeyManager()
 
@@ -16,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastSelectionRect: CGRect = .zero
     private var currentTask: Task<Void, Never>?
     private var editorTask: Task<Void, Never>?
+    private var lastEditorInput: String = ""
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let isTrusted = AXIsProcessTrusted()
@@ -263,6 +265,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     
     private func setupEditorCallbacks() {
         editorWindow.onGenerate = { [weak self] text in
+            self?.lastEditorInput = text
             self?.performEditorRewrite(text: text)
         }
         
@@ -275,6 +278,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editorWindow.onReplace = { [weak self] text in
             self?.accessibilityManager.replaceSelectedText(with: text)
             Logger.editor.info("Replaced selected text")
+        }
+        
+        editorWindow.onTryAgain = { [weak self] in
+            guard let self, !self.lastEditorInput.isEmpty else { return }
+            self.performEditorRewrite(text: self.lastEditorInput)
+        }
+        
+        editorWindow.onLike = { [weak self] resultText in
+            self?.submitFeedback(type: "thumbs_up", content: resultText)
+        }
+        
+        editorWindow.onDislike = { [weak self] resultText in
+            self?.submitFeedback(type: "thumbs_down", content: resultText)
+        }
+    }
+    
+    private func submitFeedback(type: String, content: String) {
+        Task {
+            do {
+                try await feedbackService.submit(
+                    feedbackType: type,
+                    messageContent: content,
+                    originalContent: lastEditorInput
+                )
+            } catch {
+                Logger.feedback.error("Failed to submit feedback: \(error.localizedDescription)")
+            }
         }
     }
     

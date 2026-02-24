@@ -10,4 +10,5 @@ nonisolated extension Logger {
     static let accessibility = Logger(subsystem: subsystem, category: "accessibility")
     static let hotkey = Logger(subsystem: subsystem, category: "hotkey")
     static let editor = Logger(subsystem: subsystem, category: "editor")
+    static let feedback = Logger(subsystem: subsystem, category: "feedback")
 }

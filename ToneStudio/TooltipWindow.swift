@@ -1096,10 +1096,32 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         inputPanel.layer?.cornerRadius = Self.innerCornerRadius
         containerView.addSubview(inputPanel)
         
-        // Layout from bottom to top to prevent overlap with consistent 12px padding
-        // 1. Input field area at bottom
+        // Layout with consistent 12px padding on all sides
+        // Selected text container at TOP of input panel
+        let selectedRowH: CGFloat = 32
+        let selectedRowY = inputPanelH - 12 - selectedRowH  // 12px from top
+        let selectedRowContainer = NSView(frame: NSRect(x: 12, y: selectedRowY, width: buttonWidth - 24, height: selectedRowH))
+        selectedRowContainer.wantsLayer = true
+        selectedRowContainer.layer?.backgroundColor = Self.buttonBG.cgColor
+        selectedRowContainer.layer?.cornerRadius = 8
+        inputPanel.addSubview(selectedRowContainer)
+        
+        // Document icon inside container
+        let docIcon = NSImageView(frame: NSRect(x: 8, y: (selectedRowH - 16) / 2, width: 16, height: 16))
+        let docConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
+        docIcon.image = NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)?.withSymbolConfiguration(docConfig)
+        docIcon.contentTintColor = Self.primaryText
+        selectedRowContainer.addSubview(docIcon)
+        
+        // Selected text label inside container
+        let truncatedText = selectedText.count > 28 ? String(selectedText.prefix(28)) + "..." : selectedText
+        let selectedLabel = makeLabel("Selected text: \(truncatedText)", size: 12, weight: .regular, color: Self.primaryText)
+        selectedLabel.frame = NSRect(x: 28, y: (selectedRowH - 16) / 2, width: buttonWidth - 52, height: 16)
+        selectedRowContainer.addSubview(selectedLabel)
+        
+        // Input field area at bottom with 12px padding
         let sendBtnSize: CGFloat = 28
-        let inputFieldY: CGFloat = 12  // Consistent padding from bottom
+        let inputFieldY: CGFloat = 12  // 12px from bottom
         let inputFieldH: CGFloat = 44  // Increased height for better touch target
         
         let textField = NSTextField(frame: NSRect(
@@ -1142,28 +1164,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         sendBtn.target = self
         sendBtn.action = #selector(quickActionsSendTapped)
         inputPanel.addSubview(sendBtn)
-        
-        // 2. Selected text container above input field with 12px gap
-        let selectedRowH: CGFloat = 32
-        let selectedRowY = inputFieldY + inputFieldH + 12  // Increased gap to 12px
-        let selectedRowContainer = NSView(frame: NSRect(x: 12, y: selectedRowY, width: buttonWidth - 24, height: selectedRowH))  // Consistent 12px side padding
-        selectedRowContainer.wantsLayer = true
-        selectedRowContainer.layer?.backgroundColor = Self.buttonBG.cgColor
-        selectedRowContainer.layer?.cornerRadius = 8
-        inputPanel.addSubview(selectedRowContainer)
-        
-        // Document icon inside container
-        let docIcon = NSImageView(frame: NSRect(x: 8, y: (selectedRowH - 16) / 2, width: 16, height: 16))
-        let docConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
-        docIcon.image = NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)?.withSymbolConfiguration(docConfig)
-        docIcon.contentTintColor = Self.primaryText
-        selectedRowContainer.addSubview(docIcon)
-        
-        // Selected text label inside container
-        let truncatedText = selectedText.count > 28 ? String(selectedText.prefix(28)) + "..." : selectedText
-        let selectedLabel = makeLabel("Selected text: \(truncatedText)", size: 12, weight: .regular, color: Self.primaryText)
-        selectedLabel.frame = NSRect(x: 28, y: (selectedRowH - 16) / 2, width: buttonWidth - 52, height: 16)  // Adjusted width for new padding
-        selectedRowContainer.addSubview(selectedLabel)
         
         // Focus the input field after a short delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in

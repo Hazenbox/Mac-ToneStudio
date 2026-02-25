@@ -1087,37 +1087,17 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         inputPanel.layer?.cornerRadius = Self.innerCornerRadius
         containerView.addSubview(inputPanel)
         
-        // Selected text row at top of input panel - with visible background container
-        let selectedRowH: CGFloat = 32
-        let selectedRowY = inputPanelH - 8 - selectedRowH
-        let selectedRowContainer = NSView(frame: NSRect(x: 8, y: selectedRowY, width: buttonWidth - 16, height: selectedRowH))
-        selectedRowContainer.wantsLayer = true
-        selectedRowContainer.layer?.backgroundColor = Self.buttonBG.cgColor
-        selectedRowContainer.layer?.cornerRadius = 8
-        inputPanel.addSubview(selectedRowContainer)
-        
-        // Document icon inside container
-        let docIcon = NSImageView(frame: NSRect(x: 8, y: (selectedRowH - 16) / 2, width: 16, height: 16))
-        let docConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
-        docIcon.image = NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)?.withSymbolConfiguration(docConfig)
-        docIcon.contentTintColor = Self.primaryText
-        selectedRowContainer.addSubview(docIcon)
-        
-        // Selected text label inside container
-        let truncatedText = selectedText.count > 28 ? String(selectedText.prefix(28)) + "..." : selectedText
-        let selectedLabel = makeLabel("Selected text: \(truncatedText)", size: 12, weight: .regular, color: Self.primaryText)
-        selectedLabel.frame = NSRect(x: 28, y: (selectedRowH - 16) / 2, width: buttonWidth - 48, height: 16)
-        selectedRowContainer.addSubview(selectedLabel)
-        
-        // Functional input field - increased height
+        // Layout from bottom to top to prevent overlap
+        // 1. Input field area at bottom
         let sendBtnSize: CGFloat = 28
-        let textFieldY: CGFloat = 12
-        let textFieldH: CGFloat = 32
+        let inputFieldY: CGFloat = 8
+        let inputFieldH: CGFloat = 36
+        
         let textField = NSTextField(frame: NSRect(
             x: 12,
-            y: textFieldY,
+            y: inputFieldY + (inputFieldH - 24) / 2,  // Center vertically in input area
             width: buttonWidth - 24 - sendBtnSize - 8,
-            height: textFieldH
+            height: 24
         ))
         textField.placeholderString = "Ask anything about selected text"
         textField.placeholderAttributedString = NSAttributedString(
@@ -1137,10 +1117,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         inputPanel.addSubview(textField)
         quickActionsInputField = textField
         
-        // Send button
+        // Send button aligned with input field
         let sendBtn = NSButton(frame: NSRect(
             x: buttonWidth - 12 - sendBtnSize,
-            y: textFieldY,
+            y: inputFieldY + (inputFieldH - sendBtnSize) / 2,
             width: sendBtnSize,
             height: sendBtnSize
         ))
@@ -1153,6 +1133,28 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         sendBtn.target = self
         sendBtn.action = #selector(quickActionsSendTapped)
         inputPanel.addSubview(sendBtn)
+        
+        // 2. Selected text container above input field with 8px gap
+        let selectedRowH: CGFloat = 32
+        let selectedRowY = inputFieldY + inputFieldH + 8
+        let selectedRowContainer = NSView(frame: NSRect(x: 8, y: selectedRowY, width: buttonWidth - 16, height: selectedRowH))
+        selectedRowContainer.wantsLayer = true
+        selectedRowContainer.layer?.backgroundColor = Self.buttonBG.cgColor
+        selectedRowContainer.layer?.cornerRadius = 8
+        inputPanel.addSubview(selectedRowContainer)
+        
+        // Document icon inside container
+        let docIcon = NSImageView(frame: NSRect(x: 8, y: (selectedRowH - 16) / 2, width: 16, height: 16))
+        let docConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
+        docIcon.image = NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)?.withSymbolConfiguration(docConfig)
+        docIcon.contentTintColor = Self.primaryText
+        selectedRowContainer.addSubview(docIcon)
+        
+        // Selected text label inside container
+        let truncatedText = selectedText.count > 28 ? String(selectedText.prefix(28)) + "..." : selectedText
+        let selectedLabel = makeLabel("Selected text: \(truncatedText)", size: 12, weight: .regular, color: Self.primaryText)
+        selectedLabel.frame = NSRect(x: 28, y: (selectedRowH - 16) / 2, width: buttonWidth - 48, height: 16)
+        selectedRowContainer.addSubview(selectedLabel)
         
         // Focus the input field after a short delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
@@ -1626,12 +1628,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
 
     private func makeAvatarImageView(size: CGFloat) -> NSImageView {
         let imageView = NSImageView(frame: NSRect(x: 0, y: 0, width: size, height: size))
-        imageView.image = NSImage(named: "ProductLogo")
+        imageView.image = NSImage(named: "ProductIndicator")
         imageView.imageScaling = .scaleProportionallyUpOrDown
         imageView.imageAlignment = .alignCenter
         imageView.wantsLayer = true
-        imageView.layer?.cornerRadius = size / 2
-        imageView.layer?.masksToBounds = true
         return imageView
     }
 

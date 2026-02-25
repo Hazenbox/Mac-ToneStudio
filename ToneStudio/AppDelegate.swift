@@ -106,6 +106,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
         
+        // Set up stress test callback (Cmd+Shift+Control+T)
+        hotkeyManager.setStressTestCallback { [weak self] in
+            self?.runStressTests()
+        }
+        
         setupEditorCallbacks()
         
         NSLog("✅ Monitoring started successfully")
@@ -478,6 +483,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard !Task.isCancelled else { return }
                 let message = (error as? RewriteService.RewriteError)?.errorDescription ?? error.localizedDescription
                 editorWindow.updateState(.error(message))
+            }
+        }
+    }
+    
+    // MARK: - Stress Tests
+    
+    private func runStressTests() {
+        NSLog("🧪 Running stress tests...")
+        
+        Task {
+            let report = await StressTestRunner.shared.runAllTests()
+            
+            await MainActor.run {
+                // Save report to file
+                let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                let reportPath = documentsPath.appendingPathComponent("ToneStudio_StressTest_Report.txt")
+                
+                do {
+                    try report.write(to: reportPath, atomically: true, encoding: .utf8)
+                    NSLog("📄 Stress test report saved to: \(reportPath.path)")
+                    
+                    // Open the report file
+                    NSWorkspace.shared.open(reportPath)
+                } catch {
+                    NSLog("❌ Failed to save report: \(error)")
+                }
+                
+                // Also log to console
+                print(report)
             }
         }
     }

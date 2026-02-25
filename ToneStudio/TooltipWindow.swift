@@ -911,24 +911,9 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         
         let iconSize = size.width
         
-        let bgLayer = CALayer()
-        bgLayer.frame = CGRect(origin: .zero, size: size)
-        bgLayer.backgroundColor = Self.darkBubbleBG.cgColor
-        bgLayer.cornerRadius = iconSize / 2
-        bgLayer.shadowColor = NSColor.black.cgColor
-        bgLayer.shadowOpacity = 0.3
-        bgLayer.shadowOffset = CGSize(width: 0, height: -2)
-        bgLayer.shadowRadius = 4
-        containerView.layer?.addSublayer(bgLayer)
-        
-        let avatarSize = iconSize - 8
-        let avatar = makeAvatarImageView(size: avatarSize)
-        avatar.frame = NSRect(
-            x: (iconSize - avatarSize) / 2,
-            y: (iconSize - avatarSize) / 2,
-            width: avatarSize,
-            height: avatarSize
-        )
+        // Logo only - no background
+        let avatar = makeAvatarImageView(size: iconSize)
+        avatar.frame = NSRect(x: 0, y: 0, width: iconSize, height: iconSize)
         containerView.addSubview(avatar)
         
         let clickArea = ClickThroughButton(frame: NSRect(origin: .zero, size: size))
@@ -948,26 +933,9 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         
         let iconSize = size.width
         
-        // Circular background
-        let bgLayer = CALayer()
-        bgLayer.frame = CGRect(origin: .zero, size: size)
-        bgLayer.backgroundColor = Self.cardBG.cgColor
-        bgLayer.cornerRadius = iconSize / 2
-        bgLayer.shadowColor = NSColor.black.cgColor
-        bgLayer.shadowOpacity = 0.4
-        bgLayer.shadowOffset = CGSize(width: 0, height: -2)
-        bgLayer.shadowRadius = 6
-        containerView.layer?.addSublayer(bgLayer)
-        
-        // Jio logo avatar
-        let avatarSize = iconSize - 12
-        let avatar = makeAvatarImageView(size: avatarSize)
-        avatar.frame = NSRect(
-            x: (iconSize - avatarSize) / 2,
-            y: (iconSize - avatarSize) / 2,
-            width: avatarSize,
-            height: avatarSize
-        )
+        // Logo only - no background
+        let avatar = makeAvatarImageView(size: iconSize)
+        avatar.frame = NSRect(x: 0, y: 0, width: iconSize, height: iconSize)
         containerView.addSubview(avatar)
         
         // Close button (hidden by default, shown on hover)
@@ -1110,7 +1078,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         )
         containerView.addSubview(rephraseBtn)
         
-        // Input panel above buttons
+        // Input panel above buttons - increased height for better spacing
         let inputPanelY = rephraseY + buttonH + 12
         let inputPanelH: CGFloat = height - inputPanelY - 33 - 8  // Leave room for header
         let inputPanel = NSView(frame: NSRect(x: padding, y: inputPanelY, width: buttonWidth, height: inputPanelH))
@@ -1119,26 +1087,32 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         inputPanel.layer?.cornerRadius = Self.innerCornerRadius
         containerView.addSubview(inputPanel)
         
-        // Selected text row at top of input panel
-        let selectedRowY = inputPanelH - 12 - 16
+        // Selected text row at top of input panel - with visible background container
+        let selectedRowH: CGFloat = 32
+        let selectedRowY = inputPanelH - 8 - selectedRowH
+        let selectedRowContainer = NSView(frame: NSRect(x: 8, y: selectedRowY, width: buttonWidth - 16, height: selectedRowH))
+        selectedRowContainer.wantsLayer = true
+        selectedRowContainer.layer?.backgroundColor = Self.buttonBG.cgColor
+        selectedRowContainer.layer?.cornerRadius = 8
+        inputPanel.addSubview(selectedRowContainer)
         
-        // Document icon
-        let docIcon = NSImageView(frame: NSRect(x: 12, y: selectedRowY, width: 16, height: 16))
+        // Document icon inside container
+        let docIcon = NSImageView(frame: NSRect(x: 8, y: (selectedRowH - 16) / 2, width: 16, height: 16))
         let docConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
         docIcon.image = NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)?.withSymbolConfiguration(docConfig)
         docIcon.contentTintColor = Self.primaryText
-        inputPanel.addSubview(docIcon)
+        selectedRowContainer.addSubview(docIcon)
         
-        // Selected text label
+        // Selected text label inside container
         let truncatedText = selectedText.count > 28 ? String(selectedText.prefix(28)) + "..." : selectedText
         let selectedLabel = makeLabel("Selected text: \(truncatedText)", size: 12, weight: .regular, color: Self.primaryText)
-        selectedLabel.frame = NSRect(x: 32, y: selectedRowY, width: buttonWidth - 44, height: 16)
-        inputPanel.addSubview(selectedLabel)
+        selectedLabel.frame = NSRect(x: 28, y: (selectedRowH - 16) / 2, width: buttonWidth - 48, height: 16)
+        selectedRowContainer.addSubview(selectedLabel)
         
-        // Functional input field
-        let sendBtnSize: CGFloat = 24
-        let textFieldY: CGFloat = 10
-        let textFieldH: CGFloat = 24
+        // Functional input field - increased height
+        let sendBtnSize: CGFloat = 28
+        let textFieldY: CGFloat = 12
+        let textFieldH: CGFloat = 32
         let textField = NSTextField(frame: NSRect(
             x: 12,
             y: textFieldY,
@@ -1512,11 +1486,12 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
                 
                 yPos -= bubbleH
                 
-                // Pill bubble background
+                // Bubble background - pill for single line, rounded for multi-line
                 let bubbleBG = NSView(frame: NSRect(x: bubbleX, y: yPos, width: bubbleW, height: bubbleH))
                 bubbleBG.wantsLayer = true
                 bubbleBG.layer?.backgroundColor = Self.actionPillBG.cgColor
-                bubbleBG.layer?.cornerRadius = bubbleH / 2  // Full pill shape
+                let isSingleLine = bubbleH <= 40
+                bubbleBG.layer?.cornerRadius = isSingleLine ? bubbleH / 2 : 16
                 contentView.addSubview(bubbleBG)
                 
                 // User message text inside bubble
@@ -1879,25 +1854,19 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     }
     
     private func restoreChatFromFAB() {
-        // Restore to previous chat window position with iOS-style spring animation
+        // Restore chat window anchored to current FAB position with iOS-style spring animation
         let height = calculateChatWindowHeight()
         let size = NSSize(width: Self.chatWindowWidth, height: height)
         
-        // Calculate target frame - use last position or center from FAB
-        var targetFrame: NSRect
-        if let lastFrame = lastChatWindowFrame {
-            targetFrame = lastFrame
-            targetFrame.size = size
-        } else {
-            // Center the chat window on the FAB position
-            let fabCenter = CGPoint(x: panel.frame.midX, y: panel.frame.midY)
-            targetFrame = NSRect(
-                x: fabCenter.x - size.width / 2,
-                y: fabCenter.y - size.height / 2,
-                width: size.width,
-                height: size.height
-            )
-        }
+        // ALWAYS use current FAB position as anchor (not old chat window position)
+        // This ensures the chat opens near where the FAB currently is after dragging
+        let fabFrame = panel.frame
+        var targetFrame = NSRect(
+            x: fabFrame.minX,
+            y: fabFrame.maxY - size.height,  // Align top of chat with top of FAB
+            width: size.width,
+            height: size.height
+        )
         
         // Ensure on screen
         if let screen = NSScreen.screens.first(where: { $0.frame.intersects(targetFrame) }) ?? NSScreen.main {

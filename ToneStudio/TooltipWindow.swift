@@ -1102,8 +1102,8 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         closeBtn.frame = NSRect(x: width - 16 - 14, y: headerY, width: 16, height: 16)
         containerView.addSubview(closeBtn)
         
-        // Input area at bottom: inset 7px from sides, height ~44px
-        let inputPanelH: CGFloat = 44
+        // Input area at bottom: inset 7px from sides, height ~70px for 3 lines
+        let inputPanelH: CGFloat = 70
         let inputPanelY: CGFloat = 7
         let sendBtnSize: CGFloat = 28
         
@@ -1113,10 +1113,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         inputBG.layer?.cornerRadius = Self.innerCornerRadius
         containerView.addSubview(inputBG)
         
-        // Send button on the right side of input area
+        // Send button on the right side of input area (positioned at bottom)
         let sendBtn = NSButton(frame: NSRect(
             x: width - 7 - 8 - sendBtnSize,
-            y: inputPanelY + (inputPanelH - sendBtnSize) / 2,
+            y: inputPanelY + 8,
             width: sendBtnSize,
             height: sendBtnSize
         ))
@@ -1131,11 +1131,11 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         sendBtn.isEnabled = !isLoadingInline
         containerView.addSubview(sendBtn)
         
-        // Add text field directly to containerView for proper focus handling
-        let textFieldH: CGFloat = 22
+        // Add text field directly to containerView for proper focus handling (taller for 3 lines)
+        let textFieldH: CGFloat = 54
         let textField = NSTextField(frame: NSRect(
             x: 7 + 10,
-            y: inputPanelY + (inputPanelH - textFieldH) / 2,
+            y: inputPanelY + 8,
             width: width - 14 - 20 - sendBtnSize - 4,
             height: textFieldH
         ))
@@ -1193,15 +1193,65 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     
     private func buildChatContentInView(_ contentView: NSView, width: CGFloat, availableHeight: CGFloat) {
         let padding: CGFloat = 7
-        var yOffset: CGFloat = 8
-        var totalHeight: CGFloat = 8
+        let btnSize: CGFloat = 18
+        let btnSpacing: CGFloat = 6
         
-        // Selected text in dark container (matching quick actions style)
+        // STEP 1: Calculate total content height first (top-down visual order)
+        var totalHeight: CGFloat = 8  // Top padding
+        
+        // Selected text container height
+        let selectedTextH: CGFloat = selectedText.isEmpty ? 0 : Self.selectedTextContainerH + 12
+        totalHeight += selectedTextH
+        
+        // Action pill height (first user action like "Rephrase with Jio Voice and Tone")
+        let actionPillH: CGFloat = lastAction.isEmpty ? 0 : 30 + 12
+        totalHeight += actionPillH
+        
+        // Calculate heights for all conversation messages
+        var messageHeights: [(role: ChatMessage.Role, content: String, height: CGFloat, textHeight: CGFloat, bubbleW: CGFloat)] = []
+        
+        for message in conversationMessages {
+            if message.role == .assistant {
+                let availableWidth = width - padding * 2
+                let textHeight = estimateTextHeight(message.content, width: availableWidth, fontSize: 12)
+                let messageH = textHeight + 8 + btnSize + 16  // text + gap + actions + bottom spacing
+                messageHeights.append((role: .assistant, content: message.content, height: messageH, textHeight: textHeight, bubbleW: 0))
+                totalHeight += messageH
+            } else if message.role == .user {
+                // User messages as right-aligned pill bubbles
+                let maxBubbleWidth = (width - padding * 2) * Self.userBubbleMaxWidthRatio
+                let textWidth = min(estimateTextWidth(message.content, fontSize: 12), maxBubbleWidth - 24)
+                let textHeight = estimateTextHeight(message.content, width: textWidth, fontSize: 12)
+                let bubblePaddingH: CGFloat = 12
+                let bubblePaddingV: CGFloat = 9
+                let bubbleW = textWidth + bubblePaddingH * 2
+                let bubbleH = textHeight + bubblePaddingV * 2
+                messageHeights.append((role: .user, content: message.content, height: bubbleH + 12, textHeight: textHeight, bubbleW: bubbleW))
+                totalHeight += bubbleH + 12
+            }
+        }
+        
+        // Loading indicator height
+        let loadingH: CGFloat = isLoadingInline ? 24 + 12 : 0
+        totalHeight += loadingH
+        
+        totalHeight += 10  // Bottom padding
+        
+        // Ensure minimum height
+        let contentHeight = max(totalHeight, availableHeight)
+        contentView.frame = NSRect(x: 0, y: 0, width: width, height: contentHeight)
+        
+        // STEP 2: Position elements from TOP (high y) to BOTTOM (low y)
+        // In AppKit, y=0 is at the bottom, so we start from contentHeight and work downward
+        var yPos: CGFloat = contentHeight - 8  // Start from top with padding
+        
+        // Selected text in dark container at TOP
         if !selectedText.isEmpty {
             let containerH = Self.selectedTextContainerH
             let containerW = width - padding * 2
+            yPos -= containerH
             
-            let selectedContainer = NSView(frame: NSRect(x: padding, y: yOffset, width: containerW, height: containerH))
+            let selectedContainer = NSView(frame: NSRect(x: padding, y: yPos, width: containerW, height: containerH))
             selectedContainer.wantsLayer = true
             selectedContainer.layer?.backgroundColor = Self.innerPanelBG.cgColor
             selectedContainer.layer?.cornerRadius = Self.innerCornerRadius
@@ -1220,17 +1270,17 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             selectedLabel.frame = NSRect(x: 30, y: (containerH - 14) / 2, width: containerW - 40, height: 14)
             selectedContainer.addSubview(selectedLabel)
             
-            yOffset += containerH + 12
-            totalHeight += containerH + 12
+            yPos -= 12  // Gap below selected text
         }
         
-        // Action pill - RIGHT ALIGNED as per Figma
+        // Action pill (first user action) - RIGHT ALIGNED
         if !lastAction.isEmpty {
             let pillWidth = estimatePillWidth(lastAction)
             let pillH: CGFloat = 30
             let pillX = width - padding - pillWidth  // Right-aligned
+            yPos -= pillH
             
-            let pillBG = NSView(frame: NSRect(x: pillX, y: yOffset, width: pillWidth, height: pillH))
+            let pillBG = NSView(frame: NSRect(x: pillX, y: yPos, width: pillWidth, height: pillH))
             pillBG.wantsLayer = true
             pillBG.layer?.backgroundColor = Self.actionPillBG.cgColor
             pillBG.layer?.cornerRadius = Self.pillCornerRadius
@@ -1240,27 +1290,21 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             pillLabel.frame = NSRect(x: 12, y: (pillH - 14) / 2, width: pillWidth - 24, height: 14)
             pillBG.addSubview(pillLabel)
             
-            yOffset += pillH + 12
-            totalHeight += pillH + 12
+            yPos -= 12  // Gap below action pill
         }
         
-        // Conversation messages
-        let avatarSize: CGFloat = 16
-        let avatarPadding: CGFloat = 8
-        let contentIndent = padding + avatarSize + avatarPadding
-        
-        for message in conversationMessages {
-            if message.role == .assistant {
-                let availableWidth = width - contentIndent - padding
-                let textHeight = estimateTextHeight(message.content, width: availableWidth, fontSize: 12)
-                let messageH = textHeight + 50
+        // Conversation messages in chronological order (oldest first, newest at bottom)
+        for (index, msgData) in messageHeights.enumerated() {
+            let message = conversationMessages[index]
+            
+            if msgData.role == .assistant {
+                let availableWidth = width - padding * 2
+                let textHeight = msgData.textHeight
                 
-                // AI avatar
-                let aiAvatar = makeAvatarImageView(size: avatarSize)
-                aiAvatar.frame = NSRect(x: padding, y: yOffset + textHeight - avatarSize, width: avatarSize, height: avatarSize)
-                contentView.addSubview(aiAvatar)
+                // Position from top of this message block
+                yPos -= textHeight
                 
-                // AI response text with line-height 1.2
+                // AI response text (no avatar)
                 let responseLabel = NSTextField(wrappingLabelWithString: message.content)
                 responseLabel.font = .systemFont(ofSize: 12)
                 responseLabel.textColor = Self.primaryText
@@ -1268,59 +1312,56 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
                 responseLabel.drawsBackground = false
                 responseLabel.isEditable = false
                 responseLabel.isSelectable = true
-                responseLabel.frame = NSRect(x: contentIndent, y: yOffset, width: availableWidth, height: textHeight)
+                responseLabel.frame = NSRect(x: padding, y: yPos, width: availableWidth, height: textHeight)
                 contentView.addSubview(responseLabel)
                 
-                yOffset += textHeight + 8
+                yPos -= 8  // Gap between text and action buttons
                 
-                // Action icons row - aligned with content (after avatar)
-                let actionsY = yOffset
-                var btnX: CGFloat = contentIndent
-                let btnSize: CGFloat = 18
-                let btnSpacing: CGFloat = 6
+                // Action icons row BELOW the text
+                yPos -= btnSize
+                var btnX: CGFloat = padding
                 
                 let copyBtn = makeSmallIconButton(symbolName: "doc.on.doc", action: #selector(copyTapped))
-                copyBtn.frame = NSRect(x: btnX, y: actionsY, width: btnSize, height: btnSize)
+                copyBtn.frame = NSRect(x: btnX, y: yPos, width: btnSize, height: btnSize)
                 contentView.addSubview(copyBtn)
                 btnX += btnSize + btnSpacing
                 
                 let refreshBtn = makeSmallIconButton(symbolName: "arrow.clockwise", action: #selector(regenerateTapped))
-                refreshBtn.frame = NSRect(x: btnX, y: actionsY, width: btnSize, height: btnSize)
+                refreshBtn.frame = NSRect(x: btnX, y: yPos, width: btnSize, height: btnSize)
                 contentView.addSubview(refreshBtn)
                 btnX += btnSize + btnSpacing
                 
                 let likeBtn = makeSmallIconButton(symbolName: "hand.thumbsup", action: #selector(likeTapped))
-                likeBtn.frame = NSRect(x: btnX, y: actionsY, width: btnSize, height: btnSize)
+                likeBtn.frame = NSRect(x: btnX, y: yPos, width: btnSize, height: btnSize)
                 contentView.addSubview(likeBtn)
                 btnX += btnSize + btnSpacing
                 
                 let dislikeBtn = makeSmallIconButton(symbolName: "hand.thumbsdown", action: #selector(dislikeTapped))
-                dislikeBtn.frame = NSRect(x: btnX, y: actionsY, width: btnSize, height: btnSize)
+                dislikeBtn.frame = NSRect(x: btnX, y: yPos, width: btnSize, height: btnSize)
                 contentView.addSubview(dislikeBtn)
                 
-                yOffset += btnSize + 16
-                totalHeight += messageH
+                yPos -= 16  // Bottom spacing for this message block
                 
-            } else if message.role == .user && message.content != selectedText {
+            } else if msgData.role == .user {
                 // User messages as right-aligned pill bubbles
-                let maxBubbleWidth = (width - padding * 2) * Self.userBubbleMaxWidthRatio
-                let textWidth = min(estimateTextWidth(message.content, fontSize: 12), maxBubbleWidth - 24)
-                let textHeight = estimateTextHeight(message.content, width: textWidth, fontSize: 12)
-                
                 let bubblePaddingH: CGFloat = 12
                 let bubblePaddingV: CGFloat = 9
-                let bubbleW = textWidth + bubblePaddingH * 2
+                let textHeight = msgData.textHeight
+                let bubbleW = msgData.bubbleW
                 let bubbleH = textHeight + bubblePaddingV * 2
                 let bubbleX = width - padding - bubbleW  // Right-aligned
                 
+                yPos -= bubbleH
+                
                 // Pill bubble background
-                let bubbleBG = NSView(frame: NSRect(x: bubbleX, y: yOffset, width: bubbleW, height: bubbleH))
+                let bubbleBG = NSView(frame: NSRect(x: bubbleX, y: yPos, width: bubbleW, height: bubbleH))
                 bubbleBG.wantsLayer = true
                 bubbleBG.layer?.backgroundColor = Self.actionPillBG.cgColor
-                bubbleBG.layer?.cornerRadius = Self.pillCornerRadius
+                bubbleBG.layer?.cornerRadius = bubbleH / 2  // Full pill shape
                 contentView.addSubview(bubbleBG)
                 
                 // User message text inside bubble
+                let textWidth = bubbleW - bubblePaddingH * 2
                 let userLabel = NSTextField(wrappingLabelWithString: message.content)
                 userLabel.font = .systemFont(ofSize: 12)
                 userLabel.textColor = Self.primaryText
@@ -1331,32 +1372,21 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
                 userLabel.frame = NSRect(x: bubblePaddingH, y: bubblePaddingV, width: textWidth, height: textHeight)
                 bubbleBG.addSubview(userLabel)
                 
-                yOffset += bubbleH + 12
-                totalHeight += bubbleH + 12
+                yPos -= 12  // Gap below user bubble
             }
         }
         
-        // Loading indicator with animated typing dots
+        // Loading indicator at the bottom (newest position)
         if isLoadingInline {
             let indicatorH: CGFloat = 24
+            yPos -= indicatorH
             
-            // Add small Jio avatar for AI response indicator
-            let aiAvatar = makeAvatarImageView(size: 16)
-            aiAvatar.frame = NSRect(x: padding, y: yOffset + 4, width: 16, height: 16)
-            contentView.addSubview(aiAvatar)
-            
-            // Animated typing dots
+            // Animated typing dots (no avatar)
             let typingIndicator = TypingIndicatorView(color: Self.secondaryText)
-            typingIndicator.frame = NSRect(x: padding + 24, y: yOffset + 9, width: typingIndicator.frame.width, height: typingIndicator.frame.height)
+            typingIndicator.frame = NSRect(x: padding, y: yPos + 9, width: typingIndicator.frame.width, height: typingIndicator.frame.height)
             typingIndicator.startAnimating()
             contentView.addSubview(typingIndicator)
-            
-            yOffset += indicatorH + 12
-            totalHeight += indicatorH + 12
         }
-        
-        totalHeight += 10
-        contentView.frame = NSRect(x: 0, y: 0, width: width, height: max(totalHeight, availableHeight))
     }
     
     private func rebuildChatContent() {
@@ -1372,9 +1402,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     }
     
     private func scrollToBottom() {
-        guard let scrollView = chatScrollView, let contentView = chatContentView else { return }
-        let newScrollPoint = NSPoint(x: 0, y: max(0, contentView.frame.height - scrollView.contentSize.height))
-        scrollView.contentView.scroll(to: newScrollPoint)
+        guard let scrollView = chatScrollView else { return }
+        // Scroll to y=0 to show the bottom content (newest messages)
+        // Since we build from top (high y) to bottom (low y), y=0 shows the most recent
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: 0))
     }
     
     private func estimatePillWidth(_ text: String) -> CGFloat {

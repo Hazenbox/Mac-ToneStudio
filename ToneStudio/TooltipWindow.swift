@@ -1341,7 +1341,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         totalHeight += selectedTextH
         
         // Action pill height (first user action like "Rephrase with Jio Voice and Tone")
-        let actionPillH: CGFloat = lastAction.isEmpty ? 0 : 30 + 12
+        let actionPillH: CGFloat = lastAction.isEmpty ? 0 : 36 + 12
         totalHeight += actionPillH
         
         // Calculate heights for all conversation messages
@@ -1413,18 +1413,18 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         // Action pill (first user action) - RIGHT ALIGNED
         if !lastAction.isEmpty {
             let pillWidth = estimatePillWidth(lastAction)
-            let pillH: CGFloat = 30
+            let pillH: CGFloat = 36  // Increased height for better proportions
             let pillX = width - padding - pillWidth  // Right-aligned
             yPos -= pillH
             
             let pillBG = NSView(frame: NSRect(x: pillX, y: yPos, width: pillWidth, height: pillH))
             pillBG.wantsLayer = true
             pillBG.layer?.backgroundColor = Self.actionPillBG.cgColor
-            pillBG.layer?.cornerRadius = Self.pillCornerRadius
+            pillBG.layer?.cornerRadius = pillH / 2  // Perfect pill shape (half height)
             contentView.addSubview(pillBG)
             
             let pillLabel = makeLabel(lastAction, size: 12, weight: .regular, color: Self.primaryText)
-            pillLabel.frame = NSRect(x: 12, y: (pillH - 14) / 2, width: pillWidth - 24, height: 14)
+            pillLabel.frame = NSRect(x: 14, y: (pillH - 14) / 2, width: pillWidth - 28, height: 14)
             pillBG.addSubview(pillLabel)
             
             yPos -= 12  // Gap below action pill
@@ -1549,7 +1549,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     private func estimatePillWidth(_ text: String) -> CGFloat {
         let attr = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium)])
         let rect = attr.boundingRect(with: NSSize(width: CGFloat.greatestFiniteMagnitude, height: 20), options: [.usesLineFragmentOrigin])
-        return ceil(rect.width) + 28
+        return ceil(rect.width) + 32  // Increased padding for better pill proportions
     }
     
     private func estimateTextWidth(_ text: String, fontSize: CGFloat) -> CGFloat {

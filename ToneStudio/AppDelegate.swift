@@ -139,8 +139,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // Don't reset if we're already interacting with the same text
-        if tooltipWindow.isVisible && tooltipWindow.isInteracting && result.text == selectedText {
+        // Don't reset if we're in an interactive state (chat, options, etc.)
+        // This allows users to select text from other apps while keeping the chat open
+        if tooltipWindow.isVisible && tooltipWindow.isInteracting {
             return
         }
 

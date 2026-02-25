@@ -1096,11 +1096,11 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         inputPanel.layer?.cornerRadius = Self.innerCornerRadius
         containerView.addSubview(inputPanel)
         
-        // Layout with consistent 12px padding on all sides
-        // Selected text container at TOP of input panel
+        // Layout with consistent 10px padding for a tighter, balanced look
+        // 1. Selected text container at TOP of input panel
         let selectedRowH: CGFloat = 32
-        let selectedRowY = inputPanelH - 12 - selectedRowH  // 12px from top
-        let selectedRowContainer = NSView(frame: NSRect(x: 12, y: selectedRowY, width: buttonWidth - 24, height: selectedRowH))
+        let selectedRowY = inputPanelH - 10 - selectedRowH  // 10px from top
+        let selectedRowContainer = NSView(frame: NSRect(x: 10, y: selectedRowY, width: buttonWidth - 20, height: selectedRowH))
         selectedRowContainer.wantsLayer = true
         selectedRowContainer.layer?.backgroundColor = Self.buttonBG.cgColor
         selectedRowContainer.layer?.cornerRadius = 8
@@ -1116,19 +1116,18 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         // Selected text label inside container
         let truncatedText = selectedText.count > 28 ? String(selectedText.prefix(28)) + "..." : selectedText
         let selectedLabel = makeLabel("Selected text: \(truncatedText)", size: 12, weight: .regular, color: Self.primaryText)
-        selectedLabel.frame = NSRect(x: 28, y: (selectedRowH - 16) / 2, width: buttonWidth - 52, height: 16)
+        selectedLabel.frame = NSRect(x: 28, y: (selectedRowH - 16) / 2, width: buttonWidth - 48, height: 16)
         selectedRowContainer.addSubview(selectedLabel)
         
-        // Input field area at bottom with 12px padding
-        let sendBtnSize: CGFloat = 28
-        let inputFieldY: CGFloat = 12  // 12px from bottom
-        let inputFieldH: CGFloat = 44  // Increased height for better touch target
+        // 2. Input field positioned below selected text with 10px gap
+        let textFieldH: CGFloat = 24
+        let textFieldY = selectedRowY - 10 - textFieldH  // 10px below selected text
         
         let textField = NSTextField(frame: NSRect(
-            x: 12,
-            y: inputFieldY + (inputFieldH - 24) / 2,  // Center vertically in input area
-            width: buttonWidth - 24 - sendBtnSize - 8,
-            height: 24
+            x: 10,
+            y: textFieldY,
+            width: buttonWidth - 20,
+            height: textFieldH
         ))
         textField.placeholderString = "Ask anything about selected text"
         textField.placeholderAttributedString = NSAttributedString(
@@ -1148,10 +1147,11 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         inputPanel.addSubview(textField)
         quickActionsInputField = textField
         
-        // Send button aligned with input field
+        // 3. Send button at bottom-right corner with 10px padding
+        let sendBtnSize: CGFloat = 28
         let sendBtn = NSButton(frame: NSRect(
-            x: buttonWidth - 12 - sendBtnSize,
-            y: inputFieldY + (inputFieldH - sendBtnSize) / 2,
+            x: buttonWidth - 10 - sendBtnSize,
+            y: 10,
             width: sendBtnSize,
             height: sendBtnSize
         ))

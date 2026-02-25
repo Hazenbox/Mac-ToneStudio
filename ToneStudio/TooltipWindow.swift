@@ -1120,21 +1120,21 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         selectedRowContainer.addSubview(selectedLabel)
         
         // Close button to discard selected text
-        let closeBtn = NSButton(frame: NSRect(
+        let clearSelectedBtn = NSButton(frame: NSRect(
             x: buttonWidth - 20 - 8 - 16,
             y: (selectedRowH - 16) / 2,
             width: 16,
             height: 16
         ))
         let closeConfig = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
-        closeBtn.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Clear selected text")?
+        clearSelectedBtn.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Clear selected text")?
             .withSymbolConfiguration(closeConfig)
-        closeBtn.isBordered = false
-        closeBtn.bezelStyle = .shadowlessSquare
-        closeBtn.contentTintColor = Self.secondaryText
-        closeBtn.target = self
-        closeBtn.action = #selector(clearSelectedTextTapped)
-        selectedRowContainer.addSubview(closeBtn)
+        clearSelectedBtn.isBordered = false
+        clearSelectedBtn.bezelStyle = .inline
+        clearSelectedBtn.contentTintColor = Self.secondaryText
+        clearSelectedBtn.target = self
+        clearSelectedBtn.action = #selector(clearSelectedTextTapped)
+        selectedRowContainer.addSubview(clearSelectedBtn)
         
         // 2. Input field positioned below selected text with 10px gap
         let textFieldH: CGFloat = 24
@@ -1445,7 +1445,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             closeBtnChat.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Clear selected text")?
                 .withSymbolConfiguration(closeChatConfig)
             closeBtnChat.isBordered = false
-            closeBtnChat.bezelStyle = .shadowlessSquare
+            closeBtnChat.bezelStyle = .inline
             closeBtnChat.contentTintColor = Self.secondaryText
             closeBtnChat.target = self
             closeBtnChat.action = #selector(clearSelectedTextTapped)

@@ -1365,7 +1365,9 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             } else if message.role == .user {
                 // User messages as right-aligned pill bubbles
                 let maxBubbleWidth = (width - padding * 2) * Self.userBubbleMaxWidthRatio
-                let textWidth = min(estimateTextWidth(message.content, fontSize: 12), maxBubbleWidth - 24)
+                let naturalWidth = estimateTextWidth(message.content, fontSize: 12)
+                let minTextWidth: CGFloat = 40  // Minimum width to prevent single-char wrapping
+                let textWidth = max(min(naturalWidth, maxBubbleWidth - 24), minTextWidth)
                 let textHeight = estimateTextHeight(message.content, width: textWidth, fontSize: 12)
                 let bubblePaddingH: CGFloat = 12
                 let bubblePaddingV: CGFloat = 9
@@ -1507,7 +1509,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
                 contentView.addSubview(bubbleBG)
                 
                 // User message text inside bubble
-                let textWidth = bubbleW - bubblePaddingH * 2
+                let labelWidth = bubbleW - bubblePaddingH * 2
                 let userLabel = NSTextField(wrappingLabelWithString: message.content)
                 userLabel.font = .systemFont(ofSize: 12)
                 userLabel.textColor = Self.primaryText
@@ -1515,7 +1517,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
                 userLabel.drawsBackground = false
                 userLabel.isEditable = false
                 userLabel.isSelectable = true
-                userLabel.frame = NSRect(x: bubblePaddingH, y: bubblePaddingV, width: textWidth, height: textHeight)
+                userLabel.lineBreakMode = .byWordWrapping
+                userLabel.cell?.wraps = true
+                userLabel.cell?.isScrollable = false
+                userLabel.frame = NSRect(x: bubblePaddingH, y: bubblePaddingV, width: labelWidth, height: textHeight)
                 bubbleBG.addSubview(userLabel)
                 
                 yPos -= 12  // Gap below user bubble

@@ -21,7 +21,7 @@ enum AppConstants {
     
     // MARK: - Tooltip
     nonisolated(unsafe) static let miniIconAutoHideDelay: TimeInterval = 3.5
-    nonisolated(unsafe) static let miniIconSize: CGFloat = 36
+    nonisolated(unsafe) static let miniIconSize: CGFloat = 44
     nonisolated(unsafe) static let noSelectionAutoHideDelay: TimeInterval = 2.0
     
     // MARK: - Editor Window

@@ -432,7 +432,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     private static let tailHeight: CGFloat = BubbleContainerView.tailHeight
     private static let bubbleCorner: CGFloat = BubbleContainerView.cornerRadius
     
-    private static let optionsMenuSize = NSSize(width: 335, height: 220)
+    private static let optionsMenuSize = NSSize(width: 335, height: 260)
     private static let chatWindowWidth: CGFloat = 335
     private static let chatWindowMinHeight: CGFloat = 428
     private static let chatWindowMaxHeight: CGFloat = 500
@@ -440,7 +440,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     private static let cardCornerRadius: CGFloat = 15
     private static let innerCornerRadius: CGFloat = 11
     private static let pillCornerRadius: CGFloat = 21
-    private static let fabSize: CGFloat = 40
+    private static let fabSize: CGFloat = 48
     private static let userBubbleMaxWidthRatio: CGFloat = 0.8
     private static let selectedTextContainerH: CGFloat = 42
 
@@ -1029,21 +1029,22 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         containerView.layer?.addSublayer(cardLayer)
         
         // Header: y=9 from top
-        let headerY = height - 9 - 16
+        let logoSize: CGFloat = 24
+        let headerY = height - 9 - logoSize
         
-        // Product logo: 16x16 at x:9
-        let avatar = makeAvatarImageView(size: 16)
-        avatar.frame = NSRect(x: 9, y: headerY, width: 16, height: 16)
+        // Product logo: 24x24 at x:9
+        let avatar = makeAvatarImageView(size: logoSize)
+        avatar.frame = NSRect(x: 9, y: headerY, width: logoSize, height: logoSize)
         containerView.addSubview(avatar)
         
         // Title "Tone Studio"
-        let titleLabel = makeLabel("Tone Studio", size: 12, weight: .medium, color: Self.titleText)
-        titleLabel.frame = NSRect(x: 31, y: headerY, width: 200, height: 16)
+        let titleLabel = makeLabel("Tone Studio", size: 13, weight: .medium, color: Self.titleText)
+        titleLabel.frame = NSRect(x: 9 + logoSize + 8, y: headerY + (logoSize - 16) / 2, width: 200, height: 16)
         containerView.addSubview(titleLabel)
         
         // Close button (X)
         let closeBtn = makeCloseButton()
-        closeBtn.frame = NSRect(x: width - 16 - 14, y: headerY, width: 16, height: 16)
+        closeBtn.frame = NSRect(x: width - 16 - 14, y: headerY + (logoSize - 16) / 2, width: 16, height: 16)
         containerView.addSubview(closeBtn)
         
         // === IMPROVED LAYOUT ===
@@ -1220,21 +1221,22 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         containerView.layer?.addSublayer(cardLayer)
         
         // Header: same as options menu - y=9 from top
-        let headerY = height - 9 - 16
+        let logoSize: CGFloat = 24
+        let headerY = height - 9 - logoSize
         
-        // Product logo: 16x16 at x:9
-        let avatar = makeAvatarImageView(size: 16)
-        avatar.frame = NSRect(x: 9, y: headerY, width: 16, height: 16)
+        // Product logo: 24x24 at x:9
+        let avatar = makeAvatarImageView(size: logoSize)
+        avatar.frame = NSRect(x: 9, y: headerY, width: logoSize, height: logoSize)
         containerView.addSubview(avatar)
         
-        // Title "Tone Studio": x:31, font-size:12, medium weight, 80% opacity
-        let titleLabel = makeLabel("Tone Studio", size: 12, weight: .medium, color: Self.titleText)
-        titleLabel.frame = NSRect(x: 31, y: headerY, width: 200, height: 16)
+        // Title "Tone Studio": font-size:13, medium weight, 80% opacity
+        let titleLabel = makeLabel("Tone Studio", size: 13, weight: .medium, color: Self.titleText)
+        titleLabel.frame = NSRect(x: 9 + logoSize + 8, y: headerY + (logoSize - 16) / 2, width: 200, height: 16)
         containerView.addSubview(titleLabel)
         
         // Close button (X): 16x16 at top-right
         let closeBtn = makeCloseButton()
-        closeBtn.frame = NSRect(x: width - 16 - 14, y: headerY, width: 16, height: 16)
+        closeBtn.frame = NSRect(x: width - 16 - 14, y: headerY + (logoSize - 16) / 2, width: 16, height: 16)
         containerView.addSubview(closeBtn)
         
         // Input area at bottom: inset 7px from sides, height ~70px for 3 lines
@@ -1694,18 +1696,13 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self, self.panel.isVisible else { return }
             switch self.currentState {
-            case .chatWindow, .chatLoading, .error, .floatingFAB:
+            case .chatWindow, .chatLoading, .error, .floatingFAB, .optionsMenu:
+                // Don't dismiss on outside click for these states
                 break
             case .miniIcon, .noSelection:
                 let mouseLoc = NSEvent.mouseLocation
                 if !self.panel.frame.contains(mouseLoc) {
                     self.hide()
-                }
-            case .optionsMenu:
-                let mouseLoc = NSEvent.mouseLocation
-                if !self.panel.frame.contains(mouseLoc) {
-                    self.hide()
-                    self.onCancel?()
                 }
             }
         }

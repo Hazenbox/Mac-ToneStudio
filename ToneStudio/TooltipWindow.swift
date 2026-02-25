@@ -128,6 +128,157 @@ final class BubbleContainerView: NSView {
     }
 }
 
+// MARK: - KeyablePanel (allows text input in floating panel)
+
+final class KeyablePanel: NSPanel {
+    var allowsKeyStatus: Bool = false
+    
+    override var canBecomeKey: Bool {
+        return allowsKeyStatus
+    }
+}
+
+// MARK: - Typing Indicator (animated bouncing dots)
+
+final class TypingIndicatorView: NSView {
+    private var dotLayers: [CALayer] = []
+    private let dotCount = 3
+    private let dotSize: CGFloat = 6
+    private let dotSpacing: CGFloat = 4
+    private let dotColor: NSColor
+    
+    init(color: NSColor = .white) {
+        self.dotColor = color
+        super.init(frame: .zero)
+        setupDots()
+    }
+    
+    required init?(coder: NSCoder) {
+        self.dotColor = .white
+        super.init(coder: coder)
+        setupDots()
+    }
+    
+    private func setupDots() {
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+        
+        for i in 0..<dotCount {
+            let dot = CALayer()
+            dot.backgroundColor = dotColor.cgColor
+            dot.cornerRadius = dotSize / 2
+            dot.frame = CGRect(
+                x: CGFloat(i) * (dotSize + dotSpacing),
+                y: 0,
+                width: dotSize,
+                height: dotSize
+            )
+            layer?.addSublayer(dot)
+            dotLayers.append(dot)
+        }
+        
+        let totalWidth = CGFloat(dotCount) * dotSize + CGFloat(dotCount - 1) * dotSpacing
+        frame = NSRect(x: 0, y: 0, width: totalWidth, height: dotSize)
+    }
+    
+    func startAnimating() {
+        for (index, dot) in dotLayers.enumerated() {
+            let animation = CAKeyframeAnimation(keyPath: "transform.translation.y")
+            animation.values = [0, -4, 0]
+            animation.keyTimes = [0, 0.4, 1]
+            animation.duration = 0.6
+            animation.repeatCount = .infinity
+            animation.beginTime = CACurrentMediaTime() + Double(index) * 0.15
+            animation.timingFunctions = [
+                CAMediaTimingFunction(name: .easeInEaseOut),
+                CAMediaTimingFunction(name: .easeInEaseOut)
+            ]
+            dot.add(animation, forKey: "bounce")
+            
+            let opacityAnimation = CAKeyframeAnimation(keyPath: "opacity")
+            opacityAnimation.values = [0.4, 1.0, 0.4]
+            opacityAnimation.keyTimes = [0, 0.4, 1]
+            opacityAnimation.duration = 0.6
+            opacityAnimation.repeatCount = .infinity
+            opacityAnimation.beginTime = CACurrentMediaTime() + Double(index) * 0.15
+            dot.add(opacityAnimation, forKey: "pulse")
+        }
+    }
+    
+    func stopAnimating() {
+        for dot in dotLayers {
+            dot.removeAllAnimations()
+        }
+    }
+}
+
+// MARK: - HoverButton (button with hover background)
+
+final class HoverButton: NSButton {
+    private var trackingArea: NSTrackingArea?
+    private var hoverBackgroundLayer: CALayer?
+    private let hoverColor: NSColor
+    private let cornerRadius: CGFloat
+    
+    init(hoverColor: NSColor = NSColor.white.withAlphaComponent(0.1), cornerRadius: CGFloat = 4) {
+        self.hoverColor = hoverColor
+        self.cornerRadius = cornerRadius
+        super.init(frame: .zero)
+        setupHoverLayer()
+    }
+    
+    required init?(coder: NSCoder) {
+        self.hoverColor = NSColor.white.withAlphaComponent(0.1)
+        self.cornerRadius = 4
+        super.init(coder: coder)
+        setupHoverLayer()
+    }
+    
+    private func setupHoverLayer() {
+        wantsLayer = true
+        
+        let bgLayer = CALayer()
+        bgLayer.backgroundColor = NSColor.clear.cgColor
+        bgLayer.cornerRadius = cornerRadius
+        layer?.insertSublayer(bgLayer, at: 0)
+        hoverBackgroundLayer = bgLayer
+    }
+    
+    override func layout() {
+        super.layout()
+        hoverBackgroundLayer?.frame = bounds
+    }
+    
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingArea {
+            removeTrackingArea(existing)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeAlways],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+    
+    override func mouseEntered(with event: NSEvent) {
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.1
+            hoverBackgroundLayer?.backgroundColor = hoverColor.cgColor
+        }
+    }
+    
+    override func mouseExited(with event: NSEvent) {
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.1
+            hoverBackgroundLayer?.backgroundColor = NSColor.clear.cgColor
+        }
+    }
+}
+
 // MARK: - TooltipWindow
 
 @MainActor
@@ -144,7 +295,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     var onRegenerate: (() -> Void)?
 
     // MARK: - Panel
-    private let panel: NSPanel
+    private let panel: KeyablePanel
     private let containerView: NSView
     private var currentState: TooltipState = .optionsMenu
 
@@ -207,9 +358,9 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     private static let screenEdgePadding: CGFloat = 8
 
     override init() {
-        panel = NSPanel(
+        panel = KeyablePanel(
             contentRect: NSRect(x: 0, y: 0, width: 360, height: 240),
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )
@@ -218,7 +369,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.hidesOnDeactivate = false
-        panel.becomesKeyOnlyIfNeeded = true
         panel.isMovableByWindowBackground = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.animationBehavior = .utilityWindow
@@ -650,6 +800,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     
     private func buildMiniIconUI(size: NSSize) {
         currentState = .miniIcon
+        panel.allowsKeyStatus = false
         clearContainer()
         
         let iconSize = size.width
@@ -686,6 +837,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     
     private func buildFloatingFABUI(size: NSSize) {
         currentState = .floatingFAB
+        panel.allowsKeyStatus = false
         clearContainer()
         
         let iconSize = size.width
@@ -761,6 +913,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     
     private func buildNoSelectionUI(size: NSSize) {
         currentState = .noSelection
+        panel.allowsKeyStatus = false
         clearContainer()
         
         let bgLayer = CALayer()
@@ -783,6 +936,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
 
     private func buildOptionsMenuUI(size: NSSize) {
         currentState = .optionsMenu
+        panel.allowsKeyStatus = false
         clearContainer()
         
         let width = size.width
@@ -917,6 +1071,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
 
     private func buildChatWindowUI(size: NSSize) {
         currentState = isLoadingInline ? .chatLoading : .chatWindow
+        panel.allowsKeyStatus = true
         clearContainer()
         
         let width = size.width
@@ -950,6 +1105,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         // Input area at bottom: inset 7px from sides, height ~44px
         let inputPanelH: CGFloat = 44
         let inputPanelY: CGFloat = 7
+        let sendBtnSize: CGFloat = 28
         
         let inputBG = NSView(frame: NSRect(x: 7, y: inputPanelY, width: width - 14, height: inputPanelH))
         inputBG.wantsLayer = true
@@ -957,12 +1113,30 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         inputBG.layer?.cornerRadius = Self.innerCornerRadius
         containerView.addSubview(inputBG)
         
+        // Send button on the right side of input area
+        let sendBtn = NSButton(frame: NSRect(
+            x: width - 7 - 8 - sendBtnSize,
+            y: inputPanelY + (inputPanelH - sendBtnSize) / 2,
+            width: sendBtnSize,
+            height: sendBtnSize
+        ))
+        let sendConfig = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+        sendBtn.image = NSImage(systemSymbolName: "arrow.up.circle.fill", accessibilityDescription: "Send")?
+            .withSymbolConfiguration(sendConfig)
+        sendBtn.isBordered = false
+        sendBtn.bezelStyle = .shadowlessSquare
+        sendBtn.contentTintColor = isLoadingInline ? Self.secondaryText : NSColor.systemBlue
+        sendBtn.target = self
+        sendBtn.action = #selector(sendButtonTapped)
+        sendBtn.isEnabled = !isLoadingInline
+        containerView.addSubview(sendBtn)
+        
         // Add text field directly to containerView for proper focus handling
         let textFieldH: CGFloat = 22
         let textField = NSTextField(frame: NSRect(
             x: 7 + 10,
             y: inputPanelY + (inputPanelH - textFieldH) / 2,
-            width: width - 14 - 20,
+            width: width - 14 - 20 - sendBtnSize - 4,
             height: textFieldH
         ))
         textField.placeholderString = "Ask anything about selected text"
@@ -983,9 +1157,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         textField.isEnabled = !isLoadingInline
         containerView.addSubview(textField)
         inputField = textField
-        
-        // Make panel accept key events for text input
-        panel.becomesKeyOnlyIfNeeded = false
         
         // Content area between header and input
         let contentTopY: CGFloat = inputPanelY + inputPanelH + 7  // 7px gap
@@ -1010,11 +1181,11 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         chatScrollView = scrollView
         chatContentView = contentView
         
-        DispatchQueue.main.async { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             self?.scrollToBottom()
             // Focus input field when chat window is shown
             if let field = self?.inputField, field.isEnabled {
-                self?.panel.makeKey()
+                self?.panel.makeKeyAndOrderFront(nil)
                 self?.panel.makeFirstResponder(field)
             }
         }
@@ -1074,10 +1245,20 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         }
         
         // Conversation messages
+        let avatarSize: CGFloat = 16
+        let avatarPadding: CGFloat = 8
+        let contentIndent = padding + avatarSize + avatarPadding
+        
         for message in conversationMessages {
             if message.role == .assistant {
-                let textHeight = estimateTextHeight(message.content, width: width - padding * 2, fontSize: 12)
+                let availableWidth = width - contentIndent - padding
+                let textHeight = estimateTextHeight(message.content, width: availableWidth, fontSize: 12)
                 let messageH = textHeight + 50
+                
+                // AI avatar
+                let aiAvatar = makeAvatarImageView(size: avatarSize)
+                aiAvatar.frame = NSRect(x: padding, y: yOffset + textHeight - avatarSize, width: avatarSize, height: avatarSize)
+                contentView.addSubview(aiAvatar)
                 
                 // AI response text with line-height 1.2
                 let responseLabel = NSTextField(wrappingLabelWithString: message.content)
@@ -1087,14 +1268,14 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
                 responseLabel.drawsBackground = false
                 responseLabel.isEditable = false
                 responseLabel.isSelectable = true
-                responseLabel.frame = NSRect(x: padding, y: yOffset, width: width - padding * 2, height: textHeight)
+                responseLabel.frame = NSRect(x: contentIndent, y: yOffset, width: availableWidth, height: textHeight)
                 contentView.addSubview(responseLabel)
                 
                 yOffset += textHeight + 8
                 
-                // Action icons row - compact spacing
+                // Action icons row - aligned with content (after avatar)
                 let actionsY = yOffset
-                var btnX: CGFloat = padding
+                var btnX: CGFloat = contentIndent
                 let btnSize: CGFloat = 18
                 let btnSpacing: CGFloat = 6
                 
@@ -1155,24 +1336,23 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             }
         }
         
-        // Loading indicator
+        // Loading indicator with animated typing dots
         if isLoadingInline {
-            let spinnerSize: CGFloat = 16
-            let spinner = NSProgressIndicator(frame: NSRect(x: padding, y: yOffset, width: spinnerSize, height: spinnerSize))
-            spinner.style = .spinning
-            spinner.controlSize = .small
-            spinner.isIndeterminate = true
-            spinner.appearance = NSAppearance(named: .vibrantDark)
-            spinner.startAnimation(nil)
-            contentView.addSubview(spinner)
-            inlineSpinner = spinner
+            let indicatorH: CGFloat = 24
             
-            let loadingLabel = makeLabel("Generating...", size: 12, weight: .regular, color: Self.secondaryText)
-            loadingLabel.frame = NSRect(x: padding + spinnerSize + 8, y: yOffset, width: 100, height: 16)
-            contentView.addSubview(loadingLabel)
+            // Add small Jio avatar for AI response indicator
+            let aiAvatar = makeAvatarImageView(size: 16)
+            aiAvatar.frame = NSRect(x: padding, y: yOffset + 4, width: 16, height: 16)
+            contentView.addSubview(aiAvatar)
             
-            yOffset += spinnerSize + 16
-            totalHeight += spinnerSize + 16
+            // Animated typing dots
+            let typingIndicator = TypingIndicatorView(color: Self.secondaryText)
+            typingIndicator.frame = NSRect(x: padding + 24, y: yOffset + 9, width: typingIndicator.frame.width, height: typingIndicator.frame.height)
+            typingIndicator.startAnimating()
+            contentView.addSubview(typingIndicator)
+            
+            yOffset += indicatorH + 12
+            totalHeight += indicatorH + 12
         }
         
         totalHeight += 10
@@ -1316,8 +1496,8 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         return btn
     }
     
-    private func makeSmallIconButton(symbolName: String, action: Selector) -> NSButton {
-        let btn = NSButton(frame: .zero)
+    private func makeSmallIconButton(symbolName: String, action: Selector) -> HoverButton {
+        let btn = HoverButton(hoverColor: NSColor.white.withAlphaComponent(0.1), cornerRadius: 4)
         let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
         btn.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
             .withSymbolConfiguration(config)
@@ -1327,6 +1507,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         btn.action = action
         btn.contentTintColor = NSColor(white: 0.5, alpha: 1)
         btn.imageScaling = .scaleProportionallyDown
+        btn.toolTip = symbolName == "doc.on.doc" ? "Copy" :
+                      symbolName == "arrow.clockwise" ? "Regenerate" :
+                      symbolName == "hand.thumbsup" ? "Good response" :
+                      symbolName == "hand.thumbsdown" ? "Bad response" : nil
         return btn
     }
 
@@ -1438,10 +1622,15 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         focusInputField()
     }
     
+    @objc private func sendButtonTapped() {
+        submitInput()
+    }
+    
     private func focusInputField() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
             guard let self, let field = self.inputField else { return }
-            self.panel.makeKey()
+            self.panel.allowsKeyStatus = true
+            self.panel.makeKeyAndOrderFront(nil)
             self.panel.makeFirstResponder(field)
         }
     }

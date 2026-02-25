@@ -12,4 +12,12 @@ nonisolated extension Logger {
     static let editor = Logger(subsystem: subsystem, category: "editor")
     static let feedback = Logger(subsystem: subsystem, category: "feedback")
     static let services = Logger(subsystem: subsystem, category: "services")
+    
+    // Content Trust System
+    static let rules = Logger(subsystem: subsystem, category: "rules")
+    static let validation = Logger(subsystem: subsystem, category: "validation")
+    static let safety = Logger(subsystem: subsystem, category: "safety")
+    static let learning = Logger(subsystem: subsystem, category: "learning")
+    static let cache = Logger(subsystem: subsystem, category: "cache")
+    static let intent = Logger(subsystem: subsystem, category: "intent")
 }

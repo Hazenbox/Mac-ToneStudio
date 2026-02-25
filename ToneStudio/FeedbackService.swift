@@ -3,6 +3,8 @@ import OSLog
 
 actor FeedbackService {
     
+    static let shared = FeedbackService()
+    
     enum FeedbackError: LocalizedError {
         case serverError(statusCode: Int, body: String)
         case networkError(Error)
@@ -33,6 +35,8 @@ actor FeedbackService {
     
     private let deviceId: String
     private let userService: UserService
+    private var pendingFeedback: [FeedbackPayload] = []
+    private var feedbackHistory: [String: FeedbackState] = [:]
     
     init() {
         self.deviceId = Self.getOrCreateDeviceId()
@@ -45,8 +49,6 @@ actor FeedbackService {
         originalContent: String,
         comment: String? = nil
     ) async throws {
-        // Ensure user is authenticated before submitting feedback
-        // This is required because the backend looks up the user by deviceId
         do {
             try await userService.ensureAuthenticated()
         } catch {
@@ -100,6 +102,57 @@ actor FeedbackService {
         Logger.feedback.info("Feedback submitted successfully")
     }
     
+    func like(messageId: String, originalContent: String, conversationId: String) async throws {
+        try await submit(feedbackType: "like", messageContent: "", originalContent: originalContent)
+        updateLocalState(messageId: messageId, type: .like)
+    }
+    
+    func dislike(messageId: String, originalContent: String, conversationId: String) async throws {
+        try await submit(feedbackType: "dislike", messageContent: "", originalContent: originalContent)
+        updateLocalState(messageId: messageId, type: .dislike)
+    }
+    
+    func submitEdit(messageId: String, originalContent: String, editedContent: String, conversationId: String) async throws {
+        try await submit(feedbackType: "edit", messageContent: editedContent, originalContent: originalContent)
+        updateLocalState(messageId: messageId, type: .edit)
+        
+        let correction = Correction(
+            originalText: originalContent,
+            correctedText: editedContent,
+            category: .style,
+            context: "user_edit"
+        )
+        await LearningService.shared.recordCorrection(correction)
+    }
+    
+    func submitComment(messageId: String, originalContent: String, comment: String, conversationId: String) async throws {
+        try await submit(feedbackType: "comment", messageContent: "", originalContent: originalContent, comment: comment)
+        updateLocalState(messageId: messageId, type: .comment)
+    }
+    
+    func getFeedbackState(for messageId: String) -> FeedbackState {
+        return feedbackHistory[messageId] ?? FeedbackState()
+    }
+    
+    private func updateLocalState(messageId: String, type: FeedbackType) {
+        var state = feedbackHistory[messageId] ?? FeedbackState()
+        
+        switch type {
+        case .like:
+            state.setLiked()
+        case .dislike:
+            state.setDisliked()
+        case .edit:
+            state.edited = true
+        case .comment:
+            state.commented = true
+        case .report:
+            break
+        }
+        
+        feedbackHistory[messageId] = state
+    }
+    
     private static func getOrCreateDeviceId() -> String {
         let key = "device_id"
         if let existing = UserDefaults.standard.string(forKey: key) {
@@ -110,3 +163,4 @@ actor FeedbackService {
         return newId
     }
 }
+

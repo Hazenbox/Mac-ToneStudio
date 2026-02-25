@@ -39,6 +39,18 @@ struct ChatMessage {
     }
     let role: Role
     let content: String
+    var trustScore: TrustScore?
+    var validationResult: ValidationResult?
+    var evidence: GenerationEvidence?
+    
+    init(role: Role, content: String, trustScore: TrustScore? = nil, 
+         validationResult: ValidationResult? = nil, evidence: GenerationEvidence? = nil) {
+        self.role = role
+        self.content = content
+        self.trustScore = trustScore
+        self.validationResult = validationResult
+        self.evidence = evidence
+    }
 }
 
 // MARK: - Speech Bubble Tail View
@@ -406,6 +418,8 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     private var conversationMessages: [ChatMessage] = []
     private var lastResponse: String = ""
     private var isLoadingInline: Bool = false
+    private var currentValidationResult: ValidationResult?
+    private var currentTrustScore: TrustScore?
 
     // MARK: - UI References
     private var inputField: NSTextField?
@@ -418,6 +432,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     private var isFabHovered: Bool = false
     private var lastChatWindowFrame: NSRect?
     private var draggableFABView: DraggableFABView?
+    private var validationBadgeView: NSView?
 
     // MARK: - Event monitors
     private var globalClickMonitor: Any?
@@ -432,7 +447,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     private static let tailHeight: CGFloat = BubbleContainerView.tailHeight
     private static let bubbleCorner: CGFloat = BubbleContainerView.cornerRadius
     
-    private static let optionsMenuSize = NSSize(width: 335, height: 280)
+    private static let optionsMenuSize = NSSize(width: 335, height: 330)
     private static let chatWindowWidth: CGFloat = 335
     private static let chatWindowMinHeight: CGFloat = 428
     private static let chatWindowMaxHeight: CGFloat = 500
@@ -1061,21 +1076,28 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         let buttonWidth: CGFloat = width - padding * 2
         let buttonSpacing: CGFloat = 8
         
-        // Validate button at bottom (disabled with "coming soon")
+        // Validate button at bottom (now enabled)
         let validateY: CGFloat = padding + 4
         let validateBtn = makeOptionButton(
             title: "Validate current compliance",
             frame: NSRect(x: padding, y: validateY, width: buttonWidth, height: buttonH),
             action: #selector(validateOptionTapped),
-            enabled: false
+            enabled: true
         )
         containerView.addSubview(validateBtn)
         
-        // "coming soon" badge on validate button
-        let badge = makeLabel("coming soon", size: 10, weight: .medium, color: Self.secondaryText)
-        badge.frame = NSRect(x: buttonWidth - 85, y: (buttonH - 12) / 2, width: 75, height: 12)
-        badge.alignment = .right
-        validateBtn.addSubview(badge)
+        // Validation badge (shows issues count if any)
+        let badgeView = NSView(frame: NSRect(x: buttonWidth - 50, y: (buttonH - 20) / 2, width: 40, height: 20))
+        badgeView.wantsLayer = true
+        badgeView.layer?.cornerRadius = 10
+        badgeView.isHidden = true
+        validateBtn.addSubview(badgeView)
+        validationBadgeView = badgeView
+        
+        // Start async validation check
+        Task { [weak self] in
+            await self?.runPreValidation()
+        }
         
         // Rephrase button above validate
         let rephraseY = validateY + buttonH + buttonSpacing
@@ -1087,8 +1109,42 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         )
         containerView.addSubview(rephraseBtn)
         
+        // Quick Fix button above rephrase
+        let quickFixY = rephraseY + buttonH + buttonSpacing
+        let quickFixBtn = makeOptionButton(
+            title: "Quick Fix",
+            frame: NSRect(x: padding, y: quickFixY, width: buttonWidth, height: buttonH),
+            action: #selector(quickFixOptionTapped),
+            enabled: true
+        )
+        containerView.addSubview(quickFixBtn)
+        
+        // Quick fix badge (shows auto-fix count)
+        let quickFixBadge = NSView(frame: NSRect(x: buttonWidth - 50, y: (buttonH - 20) / 2, width: 40, height: 20))
+        quickFixBadge.wantsLayer = true
+        quickFixBadge.layer?.cornerRadius = 10
+        quickFixBadge.layer?.backgroundColor = NSColor.systemBlue.cgColor
+        quickFixBadge.isHidden = true
+        quickFixBtn.addSubview(quickFixBadge)
+        
+        // Start async auto-fix count
+        Task { [weak self] in
+            guard let self = self else { return }
+            let count = await AutoFixService.shared.getFixCount(for: self.selectedText)
+            await MainActor.run {
+                if count > 0 {
+                    quickFixBadge.isHidden = false
+                    quickFixBadge.subviews.forEach { $0.removeFromSuperview() }
+                    let countLabel = self.makeLabel("\(count)", size: 11, weight: .semibold, color: .white)
+                    countLabel.alignment = .center
+                    countLabel.frame = NSRect(x: 0, y: 2, width: 40, height: 16)
+                    quickFixBadge.addSubview(countLabel)
+                }
+            }
+        }
+        
         // Input panel above buttons - increased height for better spacing
-        let inputPanelY = rephraseY + buttonH + 12
+        let inputPanelY = quickFixY + buttonH + 12
         let inputPanelH: CGFloat = height - inputPanelY - 33 - 8  // Leave room for header
         let inputPanel = NSView(frame: NSRect(x: padding, y: inputPanelY, width: buttonWidth, height: inputPanelH))
         inputPanel.wantsLayer = true
@@ -1828,13 +1884,144 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         onRephrase?()
     }
     
+    @objc private func quickFixOptionTapped() {
+        lastAction = "Quick Fix"
+        Task { [weak self] in
+            guard let self = self else { return }
+            
+            let preview = await AutoFixService.shared.applyAllFixes(to: self.selectedText)
+            
+            await MainActor.run {
+                self.showQuickFixPreview(preview)
+            }
+        }
+    }
+    
+    private func showQuickFixPreview(_ preview: AutoFixPreview) {
+        let message = ChatMessage(role: .action, content: lastAction)
+        conversationMessages.append(message)
+        
+        var reportContent = ""
+        
+        if preview.appliedFixes.isEmpty {
+            reportContent = "✓ No auto-fixes needed. Your text looks good!\n"
+        } else {
+            reportContent = "Found **\(preview.fixCount) auto-fix\(preview.fixCount == 1 ? "" : "es")** that can be applied:\n\n"
+            
+            for (index, fix) in preview.appliedFixes.prefix(5).enumerated() {
+                reportContent += "\(index + 1). \"\(fix.original)\" → \"\(fix.replacement)\"\n"
+                reportContent += "   _(\(fix.rule))_\n"
+            }
+            
+            if preview.appliedFixes.count > 5 {
+                reportContent += "   ... and \(preview.appliedFixes.count - 5) more fixes\n"
+            }
+            
+            reportContent += "\n**Preview:**\n\(preview.fixedContent.prefix(200))"
+            if preview.fixedContent.count > 200 {
+                reportContent += "..."
+            }
+        }
+        
+        let responseMessage = ChatMessage(
+            role: .assistant,
+            content: reportContent
+        )
+        conversationMessages.append(responseMessage)
+        lastResponse = reportContent
+        
+        updateUI(.chatWindow)
+    }
+    
     @objc private func validateOptionTapped() {
-        let alert = NSAlert()
-        alert.messageText = "Coming Soon"
-        alert.informativeText = "Compliance validation will be available in a future update."
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
+        lastAction = "Validate current compliance"
+        Task { [weak self] in
+            guard let self = self else { return }
+            
+            let result = await ValidationService.shared.validate(self.selectedText)
+            self.currentValidationResult = result
+            
+            await MainActor.run {
+                self.showValidationReport(result)
+            }
+        }
+    }
+    
+    private func showValidationReport(_ result: ValidationResult) {
+        let message = ChatMessage(
+            role: .action,
+            content: lastAction
+        )
+        conversationMessages.append(message)
+        
+        var reportContent = ""
+        
+        if result.passed {
+            reportContent = "✓ Content passes compliance check with score \(result.score)/100\n\n"
+        } else {
+            reportContent = "⚠ Content needs attention. Score: \(result.score)/100\n\n"
+        }
+        
+        if result.errorCount > 0 {
+            reportContent += "**\(result.errorCount) errors** (must fix)\n"
+        }
+        if result.warningCount > 0 {
+            reportContent += "**\(result.warningCount) warnings** (should fix)\n"
+        }
+        if result.infoCount > 0 {
+            reportContent += "**\(result.infoCount) suggestions**\n"
+        }
+        
+        if !result.violations.isEmpty {
+            reportContent += "\n**Issues found:**\n"
+            for (index, violation) in result.violations.prefix(5).enumerated() {
+                let icon = violation.severity == .error ? "❌" : (violation.severity == .warning ? "⚠️" : "ℹ️")
+                reportContent += "\(index + 1). \(icon) \(violation.category): \"\(violation.text)\"\n"
+                if !violation.suggestion.isEmpty {
+                    reportContent += "   → \(violation.suggestion)\n"
+                }
+            }
+            if result.violations.count > 5 {
+                reportContent += "   ... and \(result.violations.count - 5) more issues\n"
+            }
+        }
+        
+        if result.autoFixableCount > 0 {
+            reportContent += "\n💡 **\(result.autoFixableCount) issues can be auto-fixed**"
+        }
+        
+        let responseMessage = ChatMessage(
+            role: .assistant,
+            content: reportContent,
+            validationResult: result
+        )
+        conversationMessages.append(responseMessage)
+        lastResponse = reportContent
+        
+        updateUI(.chatWindow)
+    }
+    
+    private func runPreValidation() async {
+        let (errors, warnings) = await ValidationService.shared.validateQuick(selectedText)
+        let totalIssues = errors + warnings
+        
+        await MainActor.run { [weak self] in
+            guard let self = self, let badgeView = self.validationBadgeView else { return }
+            
+            if totalIssues > 0 {
+                badgeView.isHidden = false
+                badgeView.layer?.backgroundColor = errors > 0 ? NSColor.systemRed.cgColor : NSColor.systemOrange.cgColor
+                
+                badgeView.subviews.forEach { $0.removeFromSuperview() }
+                
+                let countLabel = self.makeLabel("\(totalIssues)", size: 11, weight: .semibold, color: .white)
+                countLabel.alignment = .center
+                countLabel.frame = NSRect(x: 0, y: 2, width: 40, height: 16)
+                badgeView.addSubview(countLabel)
+            } else {
+                badgeView.isHidden = true
+            }
+        }
     }
     
     @objc private func inputPlaceholderTapped() {

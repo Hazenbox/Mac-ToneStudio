@@ -432,7 +432,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     private static let tailHeight: CGFloat = BubbleContainerView.tailHeight
     private static let bubbleCorner: CGFloat = BubbleContainerView.cornerRadius
     
-    private static let optionsMenuSize = NSSize(width: 335, height: 260)
+    private static let optionsMenuSize = NSSize(width: 335, height: 280)
     private static let chatWindowWidth: CGFloat = 335
     private static let chatWindowMinHeight: CGFloat = 428
     private static let chatWindowMaxHeight: CGFloat = 500
@@ -591,8 +591,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             
             panel.alphaValue = 0
             panel.orderFrontRegardless()
+            // Apple-style spring animation for show
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.15
+                ctx.duration = 0.25
+                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.0)
                 panel.animator().alphaValue = 1
             }
             
@@ -632,8 +634,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         
         panel.alphaValue = 0
         panel.orderFrontRegardless()
+        // Apple-style spring animation for show
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.15
+            ctx.duration = 0.25
+            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.0)
             panel.animator().alphaValue = 1
         }
         
@@ -722,8 +726,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
 
         panel.alphaValue = 0
         panel.orderFrontRegardless()
+        // Apple-style spring animation for show
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.15
+            ctx.duration = 0.25
+            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.0)
             panel.animator().alphaValue = 1
         }
 
@@ -748,8 +754,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         cancelAutoHideTimer()
         removeEventMonitors()
         clearConversation()
+        // Apple-style ease-out animation for hide
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.15
+            context.duration = 0.2
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.4, 0.0, 0.6, 1.0)
             panel.animator().alphaValue = 0
         } completionHandler: {
             MainActor.assumeIsolated { [weak self] in
@@ -801,7 +809,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             startAutoHideTimer(delay: AppConstants.noSelectionAutoHideDelay)
             
         case .optionsMenu:
-            panel.isMovableByWindowBackground = false
+            panel.isMovableByWindowBackground = true
             buildOptionsMenuUI(size: Self.optionsMenuSize)
             resizeAndReanchor(to: Self.optionsMenuSize)
             
@@ -1029,10 +1037,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         containerView.layer?.addSublayer(cardLayer)
         
         // Header: y=9 from top
-        let logoSize: CGFloat = 24
+        let logoSize: CGFloat = 28
         let headerY = height - 9 - logoSize
         
-        // Product logo: 24x24 at x:9
+        // Product logo: 28x28 at x:9
         let avatar = makeAvatarImageView(size: logoSize)
         avatar.frame = NSRect(x: 9, y: headerY, width: logoSize, height: logoSize)
         containerView.addSubview(avatar)
@@ -1088,11 +1096,11 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         inputPanel.layer?.cornerRadius = Self.innerCornerRadius
         containerView.addSubview(inputPanel)
         
-        // Layout from bottom to top to prevent overlap
+        // Layout from bottom to top to prevent overlap with consistent 12px padding
         // 1. Input field area at bottom
         let sendBtnSize: CGFloat = 28
-        let inputFieldY: CGFloat = 8
-        let inputFieldH: CGFloat = 36
+        let inputFieldY: CGFloat = 12  // Consistent padding from bottom
+        let inputFieldH: CGFloat = 44  // Increased height for better touch target
         
         let textField = NSTextField(frame: NSRect(
             x: 12,
@@ -1135,10 +1143,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         sendBtn.action = #selector(quickActionsSendTapped)
         inputPanel.addSubview(sendBtn)
         
-        // 2. Selected text container above input field with 8px gap
+        // 2. Selected text container above input field with 12px gap
         let selectedRowH: CGFloat = 32
-        let selectedRowY = inputFieldY + inputFieldH + 8
-        let selectedRowContainer = NSView(frame: NSRect(x: 8, y: selectedRowY, width: buttonWidth - 16, height: selectedRowH))
+        let selectedRowY = inputFieldY + inputFieldH + 12  // Increased gap to 12px
+        let selectedRowContainer = NSView(frame: NSRect(x: 12, y: selectedRowY, width: buttonWidth - 24, height: selectedRowH))  // Consistent 12px side padding
         selectedRowContainer.wantsLayer = true
         selectedRowContainer.layer?.backgroundColor = Self.buttonBG.cgColor
         selectedRowContainer.layer?.cornerRadius = 8
@@ -1154,7 +1162,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         // Selected text label inside container
         let truncatedText = selectedText.count > 28 ? String(selectedText.prefix(28)) + "..." : selectedText
         let selectedLabel = makeLabel("Selected text: \(truncatedText)", size: 12, weight: .regular, color: Self.primaryText)
-        selectedLabel.frame = NSRect(x: 28, y: (selectedRowH - 16) / 2, width: buttonWidth - 48, height: 16)
+        selectedLabel.frame = NSRect(x: 28, y: (selectedRowH - 16) / 2, width: buttonWidth - 52, height: 16)  // Adjusted width for new padding
         selectedRowContainer.addSubview(selectedLabel)
         
         // Focus the input field after a short delay
@@ -1221,10 +1229,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         containerView.layer?.addSublayer(cardLayer)
         
         // Header: same as options menu - y=9 from top
-        let logoSize: CGFloat = 24
+        let logoSize: CGFloat = 28
         let headerY = height - 9 - logoSize
         
-        // Product logo: 24x24 at x:9
+        // Product logo: 28x28 at x:9
         let avatar = makeAvatarImageView(size: logoSize)
         avatar.frame = NSRect(x: 9, y: headerY, width: logoSize, height: logoSize)
         containerView.addSubview(avatar)
@@ -1625,7 +1633,13 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             }
         }
         
-        panel.setFrame(frame, display: true)
+        // Apple-style spring animation for smooth transitions
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.35
+            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.0)
+            ctx.allowsImplicitAnimation = true
+            panel.animator().setFrame(frame, display: true)
+        }
     }
 
     private func makeAvatarImageView(size: CGFloat) -> NSImageView {

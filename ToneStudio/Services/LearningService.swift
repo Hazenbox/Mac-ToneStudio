@@ -60,6 +60,37 @@ actor LearningService {
         return corrections.filter { $0.createdAt >= cutoff }
     }
     
+    func getCorrectionsForContext(ecosystem: String? = nil, channel: String? = nil, limit: Int = 50) -> [Correction] {
+        var filtered = corrections
+        
+        if let ecosystem = ecosystem {
+            filtered = filtered.filter { $0.ecosystem == ecosystem || $0.ecosystem == nil }
+        }
+        
+        if let channel = channel {
+            filtered = filtered.filter { $0.channel == channel || $0.channel == nil }
+        }
+        
+        let sorted = filtered.sorted { $0.createdAt > $1.createdAt }
+        return Array(sorted.prefix(limit))
+    }
+    
+    func getCorrectionsForContext(ecosystem: EcosystemType, channel: ContentChannelType, limit: Int = 50) -> [Correction] {
+        return getCorrectionsForContext(ecosystem: ecosystem.rawValue, channel: channel.rawValue, limit: limit)
+    }
+    
+    func buildLearningContext(corrections: [Correction]) -> String {
+        guard !corrections.isEmpty else { return "" }
+        
+        var context = "based on previous feedback:\n"
+        
+        for correction in corrections.prefix(10) {
+            context += "- avoid: \"\(correction.originalText)\" → prefer: \"\(correction.correctedText)\"\n"
+        }
+        
+        return context
+    }
+    
     func addAvoidPattern(_ pattern: String) {
         avoidPatterns.insert(pattern.lowercased())
         Logger.learning.info("Added avoid pattern: '\(pattern)'")

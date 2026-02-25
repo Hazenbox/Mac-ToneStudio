@@ -10,6 +10,8 @@ actor SyncService {
     private var lastSyncTime: Date?
     private var syncInProgress = false
     private var observers: [() async -> Void] = []
+    private var scheduledSyncTask: Task<Void, Never>?
+    private var isSyncEnabled = false
     
     private let syncInterval: TimeInterval = 5 * 60  // 5 minutes
     private let userDefaults = UserDefaults.standard
@@ -39,12 +41,25 @@ actor SyncService {
     // MARK: - Public API
     
     func startBackgroundSync() {
+        guard !isSyncEnabled else {
+            Logger.sync.debug("Background sync already running")
+            return
+        }
+        
+        isSyncEnabled = true
         Logger.sync.info("Starting background sync service")
         scheduleNextSync()
     }
     
     func stopBackgroundSync() {
-        Logger.sync.info("Stopping background sync service")
+        isSyncEnabled = false
+        scheduledSyncTask?.cancel()
+        scheduledSyncTask = nil
+        Logger.sync.info("Stopped background sync service")
+    }
+    
+    func isSyncRunning() -> Bool {
+        return isSyncEnabled
     }
     
     func syncNow() async -> SyncResult {
@@ -126,13 +141,39 @@ actor SyncService {
     // MARK: - Private Sync Methods
     
     private func scheduleNextSync() {
-        Task {
-            try? await Task.sleep(nanoseconds: UInt64(syncInterval * 1_000_000_000))
-            await performScheduledSync()
+        guard isSyncEnabled else {
+            Logger.sync.debug("Sync disabled, not scheduling next sync")
+            return
+        }
+        
+        scheduledSyncTask?.cancel()
+        
+        scheduledSyncTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: UInt64(syncInterval * 1_000_000_000))
+                
+                guard !Task.isCancelled else {
+                    Logger.sync.debug("Scheduled sync task cancelled")
+                    return
+                }
+                
+                await performScheduledSync()
+            } catch {
+                if Task.isCancelled {
+                    Logger.sync.debug("Sync task cancelled during sleep")
+                } else {
+                    Logger.sync.error("Sync scheduling error: \(error.localizedDescription)")
+                }
+            }
         }
     }
     
     private func performScheduledSync() async {
+        guard isSyncEnabled else {
+            Logger.sync.debug("Sync disabled during scheduled sync")
+            return
+        }
+        
         guard isNetworkAvailable() else {
             Logger.sync.debug("Network unavailable, skipping scheduled sync")
             scheduleNextSync()

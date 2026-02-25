@@ -68,24 +68,29 @@ struct Correction: Codable, Identifiable {
     let correctedText: String
     let category: CorrectionCategory
     let context: String?
+    let ecosystem: String?
+    let channel: String?
     let createdAt: Date
     var appliedCount: Int
     var synced: Bool
     
     init(id: UUID = UUID(), originalText: String, correctedText: String,
-         category: CorrectionCategory, context: String? = nil, synced: Bool = false) {
+         category: CorrectionCategory, context: String? = nil,
+         ecosystem: String? = nil, channel: String? = nil, synced: Bool = false) {
         self.id = id
         self.originalText = originalText
         self.correctedText = correctedText
         self.category = category
         self.context = context
+        self.ecosystem = ecosystem
+        self.channel = channel
         self.createdAt = Date()
         self.appliedCount = 0
         self.synced = synced
     }
     
     func toDictionary() -> [String: Any] {
-        [
+        var dict: [String: Any] = [
             "id": id.uuidString,
             "originalText": originalText,
             "correctedText": correctedText,
@@ -94,6 +99,13 @@ struct Correction: Codable, Identifiable {
             "createdAt": ISO8601DateFormatter().string(from: createdAt),
             "appliedCount": appliedCount
         ]
+        if let ecosystem = ecosystem {
+            dict["ecosystem"] = ecosystem
+        }
+        if let channel = channel {
+            dict["channel"] = channel
+        }
+        return dict
     }
 }
 

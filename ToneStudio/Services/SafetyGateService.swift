@@ -60,6 +60,44 @@ actor SafetyGateService {
         return disclaimers[domain]
     }
     
+    func hasCriticalConcern(_ text: String) async -> Bool {
+        let lowerText = text.lowercased()
+        
+        for pattern in patterns where pattern.level == .critical {
+            if matchesPattern(lowerText, pattern: pattern) {
+                Logger.safety.warning("Critical concern detected: \(pattern.description)")
+                return true
+            }
+        }
+        
+        return false
+    }
+    
+    func getCriticalDomains(_ text: String) async -> [SafetyDomain] {
+        let lowerText = text.lowercased()
+        var domains: Set<SafetyDomain> = []
+        
+        for pattern in patterns where pattern.level == .critical {
+            if matchesPattern(lowerText, pattern: pattern) {
+                domains.insert(pattern.domain)
+            }
+        }
+        
+        return Array(domains)
+    }
+    
+    func requiresEmergencyResponse(_ text: String) async -> (Bool, EmergencyInfo?) {
+        let result = await classify(text)
+        
+        if result.routing == .emergencyResponse {
+            let domain = result.classifications.first(where: { $0.level == .critical })?.domain
+            let emergencyInfo = domain.flatMap { emergencyResponses[$0] }
+            return (true, emergencyInfo)
+        }
+        
+        return (false, nil)
+    }
+    
     // MARK: - Private Methods
     
     private func matchesPattern(_ text: String, pattern: SafetyPattern) -> Bool {

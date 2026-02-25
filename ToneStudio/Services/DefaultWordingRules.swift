@@ -165,6 +165,24 @@ enum DefaultWordingRules {
         ]
         words += incorrectFormats.map { AvoidWord(word: $0.0, category: .incorrectFormat, suggestion: $0.1) }
         
+        // Additional complex/jargon words to reach 350+ (25)
+        let additionalComplexWords = [
+            ("actualize", "achieve"), ("circling back", "following up"),
+            ("deep dive", "detailed look"), ("drill down", "examine closely"),
+            ("ecosystem", "environment"), ("evangelize", "promote"),
+            ("granular", "detailed"), ("ideate", "brainstorm"),
+            ("impactful", "effective"), ("iterate", "repeat"),
+            ("learnings", "lessons"), ("leverage", "use"),
+            ("mindshare", "attention"), ("move the needle", "make progress"),
+            ("net-net", "bottom line"), ("on my radar", "aware of"),
+            ("pain point", "problem"), ("pivot", "change direction"),
+            ("reach out", "contact"), ("robust", "strong"),
+            ("run it up the flagpole", "propose"), ("take offline", "discuss privately"),
+            ("touch base", "check in"), ("value-add", "benefit"),
+            ("vertical", "industry")
+        ]
+        words += additionalComplexWords.map { AvoidWord(word: $0.0, category: .complex, suggestion: $0.1) }
+        
         return words
     }()
     
@@ -264,6 +282,34 @@ enum DefaultWordingRules {
             "tip", "trick"
         ]
         words += learningWords.map { PreferredWord(word: $0, category: .learningDiscovery) }
+        
+        // Additional Care & Connection words (20)
+        let additionalCareWords = [
+            "appreciate your patience", "happy to help", "glad to assist",
+            "looking forward", "pleasure to serve", "delighted", "honored",
+            "privilege", "cherish", "treasure", "celebrate", "embrace",
+            "nurture", "foster", "encourage", "inspire", "motivate",
+            "empower", "strengthen", "uplift"
+        ]
+        words += additionalCareWords.map { PreferredWord(word: $0, category: .careConnection) }
+        
+        // Additional Action & Progress words (20)
+        let additionalActionWords = [
+            "momentum", "breakthrough", "victory", "triumph", "conquer",
+            "master", "excel", "thrive", "flourish", "prosper",
+            "advance", "accelerate", "boost", "elevate", "rise",
+            "soar", "climb", "ascend", "transform", "evolve"
+        ]
+        words += additionalActionWords.map { PreferredWord(word: $0, category: .actionProgress) }
+        
+        // Additional Clarity & Safety words (20)
+        let additionalClarityWords = [
+            "assured", "guaranteed", "certified", "authentic", "genuine",
+            "legitimate", "official", "trusted", "credible", "accurate",
+            "precise", "exact", "correct", "right", "proper",
+            "appropriate", "suitable", "fitting", "aligned", "consistent"
+        ]
+        words += additionalClarityWords.map { PreferredWord(word: $0, category: .claritySafety) }
         
         return words
     }()

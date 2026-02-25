@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var currentTask: Task<Void, Never>?
     private var editorTask: Task<Void, Never>?
     private var lastEditorInput: String = ""
+    private var lastTooltipPrompt: String = ""
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let isTrusted = AXIsProcessTrusted()
@@ -172,7 +173,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     
     private func handleHotkeyTrigger() {
         if tooltipWindow.isVisible && tooltipWindow.isMiniIcon {
-            tooltipWindow.updateUI(.collapsed)
+            tooltipWindow.setSelectedText(selectedText)
+            tooltipWindow.updateUI(.optionsMenu)
             return
         }
         
@@ -188,6 +190,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     tooltipWindow.hide()
                 }
                 
+                tooltipWindow.setSelectedText(text)
                 tooltipWindow.show(near: lastSelectionRect)
                 setupTooltipCallbacks()
             } else {
@@ -205,8 +208,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     
     
     private func setupTooltipCallbacks() {
+        tooltipWindow.setSelectedText(selectedText)
+        
         tooltipWindow.onRephrase = { [weak self] in
-            self?.performRephrase()
+            self?.performRephraseInChat()
         }
 
         tooltipWindow.onReplace = { [weak self] text in
@@ -217,7 +222,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         tooltipWindow.onCopy = { [weak self] text in
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
-            self?.cleanupTooltipState()
         }
 
         tooltipWindow.onCancel = { [weak self] in
@@ -225,7 +229,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         tooltipWindow.onRetry = { [weak self] in
-            self?.performRephrase()
+            self?.performRephraseInChat()
+        }
+        
+        tooltipWindow.onCustomPrompt = { [weak self] prompt in
+            self?.performCustomPromptInChat(prompt)
+        }
+        
+        tooltipWindow.onRegenerate = { [weak self] in
+            self?.performRegenerateInChat()
+        }
+        
+        tooltipWindow.onFeedback = { [weak self] feedbackType, content in
+            self?.submitTooltipFeedback(type: feedbackType, content: content)
         }
     }
     
@@ -235,25 +251,110 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         tooltipWindow.hide()
     }
 
-    // MARK: - Rephrase
+    // MARK: - Rephrase in Chat
 
-    private func performRephrase() {
+    private func performRephraseInChat() {
         currentTask?.cancel()
-
-        tooltipWindow.updateUI(.loading)
+        lastTooltipPrompt = ""
+        
+        tooltipWindow.setLastAction("Rephrase with Jio Voice and Tone")
+        tooltipWindow.showInlineLoading()
+        tooltipWindow.updateUI(.chatLoading)
 
         let text = selectedText
         currentTask = Task {
             do {
                 let result = try await rewriteService.rewrite(text: text)
                 guard !Task.isCancelled else { return }
-                tooltipWindow.updateUI(.result(result))
+                tooltipWindow.hideInlineLoading()
+                tooltipWindow.appendMessage(ChatMessage(role: .assistant, content: result))
+                tooltipWindow.updateUI(.chatWindow)
+                tooltipWindow.enableInput()
             } catch is CancellationError {
-                // User cancelled — do nothing
+                // User cancelled
             } catch {
                 guard !Task.isCancelled else { return }
+                tooltipWindow.hideInlineLoading()
                 let message = (error as? RewriteService.RewriteError)?.errorDescription ?? error.localizedDescription
                 tooltipWindow.updateUI(.error(message))
+            }
+        }
+    }
+    
+    private func performCustomPromptInChat(_ prompt: String) {
+        currentTask?.cancel()
+        lastTooltipPrompt = prompt
+        
+        tooltipWindow.appendMessage(ChatMessage(role: .user, content: prompt))
+        tooltipWindow.showInlineLoading()
+        tooltipWindow.updateUI(.chatLoading)
+
+        let text = selectedText
+        currentTask = Task {
+            do {
+                let result = try await rewriteService.rewrite(text: text, prompt: prompt)
+                guard !Task.isCancelled else { return }
+                tooltipWindow.hideInlineLoading()
+                tooltipWindow.appendMessage(ChatMessage(role: .assistant, content: result))
+                tooltipWindow.updateUI(.chatWindow)
+                tooltipWindow.enableInput()
+            } catch is CancellationError {
+                // User cancelled
+            } catch {
+                guard !Task.isCancelled else { return }
+                tooltipWindow.hideInlineLoading()
+                let message = (error as? RewriteService.RewriteError)?.errorDescription ?? error.localizedDescription
+                tooltipWindow.updateUI(.error(message))
+                tooltipWindow.enableInput()
+            }
+        }
+    }
+    
+    private func performRegenerateInChat() {
+        currentTask?.cancel()
+        
+        tooltipWindow.showInlineLoading()
+        tooltipWindow.updateUI(.chatLoading)
+
+        let text = selectedText
+        let prompt = lastTooltipPrompt
+        
+        currentTask = Task {
+            do {
+                let result: String
+                if prompt.isEmpty {
+                    result = try await rewriteService.rewrite(text: text)
+                } else {
+                    result = try await rewriteService.rewrite(text: text, prompt: prompt)
+                }
+                guard !Task.isCancelled else { return }
+                tooltipWindow.hideInlineLoading()
+                tooltipWindow.appendMessage(ChatMessage(role: .assistant, content: result))
+                tooltipWindow.updateUI(.chatWindow)
+                tooltipWindow.enableInput()
+            } catch is CancellationError {
+                // User cancelled
+            } catch {
+                guard !Task.isCancelled else { return }
+                tooltipWindow.hideInlineLoading()
+                let message = (error as? RewriteService.RewriteError)?.errorDescription ?? error.localizedDescription
+                tooltipWindow.updateUI(.error(message))
+                tooltipWindow.enableInput()
+            }
+        }
+    }
+    
+    private func submitTooltipFeedback(type: String, content: String) {
+        Task {
+            do {
+                try await feedbackService.submit(
+                    feedbackType: type,
+                    messageContent: content,
+                    originalContent: selectedText
+                )
+                Logger.feedback.info("Tooltip feedback submitted: \(type)")
+            } catch {
+                Logger.feedback.error("Failed to submit tooltip feedback: \(error.localizedDescription)")
             }
         }
     }

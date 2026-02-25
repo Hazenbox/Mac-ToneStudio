@@ -166,27 +166,32 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     // MARK: - Auto-hide timer
     private var autoHideTimer: Timer?
 
-    // MARK: - Sizing
+    // MARK: - Sizing (Figma specs)
     private static let miniIconSize = AppConstants.miniIconSize
     private static let noSelectionSize = NSSize(width: 160, height: 36)
     private static let tailHeight: CGFloat = BubbleContainerView.tailHeight
     private static let bubbleCorner: CGFloat = BubbleContainerView.cornerRadius
     
-    private static let optionsMenuSize = NSSize(width: 360, height: 240)
-    private static let chatWindowWidth: CGFloat = 360
-    private static let chatWindowMinHeight: CGFloat = 450
-    private static let chatWindowMaxHeight: CGFloat = 550
+    private static let optionsMenuSize = NSSize(width: 335, height: 220)
+    private static let chatWindowWidth: CGFloat = 335
+    private static let chatWindowMinHeight: CGFloat = 428
+    private static let chatWindowMaxHeight: CGFloat = 500
     private static let errorWidth: CGFloat = 300
+    private static let cardCornerRadius: CGFloat = 15
+    private static let innerCornerRadius: CGFloat = 11
+    private static let pillCornerRadius: CGFloat = 21
 
-    // MARK: - Colors
+    // MARK: - Colors (Figma specs)
     private static let darkBubbleBG  = NSColor(red: 0.17, green: 0.17, blue: 0.19, alpha: 1)
-    private static let cardBG        = NSColor(red: 0.15, green: 0.15, blue: 0.17, alpha: 1)
-    private static let cardBorder    = NSColor(red: 0.25, green: 0.25, blue: 0.28, alpha: 1)
+    private static let cardBG        = NSColor(red: 0.145, green: 0.145, blue: 0.149, alpha: 1) // #252526
+    private static let innerPanelBG  = NSColor(red: 0.11, green: 0.11, blue: 0.11, alpha: 1)   // #1c1c1c
+    private static let cardBorder    = NSColor.clear
     private static let primaryText   = NSColor.white
-    private static let secondaryText = NSColor(white: 0.6, alpha: 1)
-    private static let inputBG       = NSColor(red: 0.10, green: 0.10, blue: 0.12, alpha: 1)
-    private static let buttonBG      = NSColor(red: 0.14, green: 0.14, blue: 0.16, alpha: 1)
-    private static let actionPillBG  = NSColor(red: 0.20, green: 0.20, blue: 0.22, alpha: 1)
+    private static let secondaryText = NSColor.white.withAlphaComponent(0.4)
+    private static let titleText     = NSColor.white.withAlphaComponent(0.8)
+    private static let inputBG       = NSColor(red: 0.11, green: 0.11, blue: 0.11, alpha: 1)   // #1c1c1c
+    private static let buttonBG      = NSColor.white.withAlphaComponent(0.06)                  // rgba(255,255,255,0.06)
+    private static let actionPillBG  = NSColor.white.withAlphaComponent(0.06)                  // rgba(255,255,255,0.06)
 
     // MARK: - Positioning Constants
     private static let horizontalGap: CGFloat = 4
@@ -647,7 +652,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         containerView.addSubview(label)
     }
 
-    // MARK: - Options Menu State
+    // MARK: - Options Menu State (Figma: node 123-522)
 
     private func buildOptionsMenuUI(size: NSSize) {
         currentState = .optionsMenu
@@ -655,84 +660,93 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         
         let width = size.width
         let height = size.height
-        let padding: CGFloat = 16
         
+        // Card background - #252526, corner radius 15
         let cardLayer = CALayer()
         cardLayer.frame = CGRect(origin: .zero, size: size)
         cardLayer.backgroundColor = Self.cardBG.cgColor
-        cardLayer.cornerRadius = 14
-        cardLayer.borderColor = Self.cardBorder.cgColor
-        cardLayer.borderWidth = 1
+        cardLayer.cornerRadius = Self.cardCornerRadius
         containerView.layer?.addSublayer(cardLayer)
         
-        var yOffset = height - padding
+        // Header: y=9 from top (in Figma coords, so height - 9 - elementHeight in AppKit)
+        let headerY = height - 9 - 16
         
-        let headerH: CGFloat = 30
-        yOffset -= headerH
-        
-        let avatar = makeAvatarImageView(size: 24)
-        avatar.frame = NSRect(x: padding, y: yOffset + (headerH - 24) / 2, width: 24, height: 24)
+        // Product logo: 16x16 at x:9
+        let avatar = makeAvatarImageView(size: 16)
+        avatar.frame = NSRect(x: 9, y: headerY, width: 16, height: 16)
         containerView.addSubview(avatar)
         
-        let titleLabel = makeLabel("Tone Studio", size: 14, weight: .semibold, color: Self.primaryText)
-        titleLabel.frame = NSRect(x: padding + 24 + 10, y: yOffset + (headerH - 18) / 2, width: 200, height: 18)
+        // Title "Tone Studio": x:31, font-size:12, medium weight, 80% opacity
+        let titleLabel = makeLabel("Tone Studio", size: 12, weight: .medium, color: Self.titleText)
+        titleLabel.frame = NSRect(x: 31, y: headerY, width: 200, height: 16)
         containerView.addSubview(titleLabel)
         
-        yOffset -= 16
+        // Close button (X): 16x16 at x:305 (width - 16 - 14 = 305 for 335 width)
+        let closeBtn = makeCloseButton()
+        closeBtn.frame = NSRect(x: width - 16 - 14, y: headerY, width: 16, height: 16)
+        containerView.addSubview(closeBtn)
         
-        let selectedTextRowH: CGFloat = 44
-        yOffset -= selectedTextRowH
+        // Dark inner panel: inset 33px from top, 7px from sides, 85px from bottom
+        // In AppKit: y = 85, height = totalHeight - 33 - 85 = 220 - 33 - 85 = 102
+        let innerPanelY: CGFloat = 85
+        let innerPanelH: CGFloat = height - 33 - 85
+        let innerPanel = NSView(frame: NSRect(x: 7, y: innerPanelY, width: width - 14, height: innerPanelH))
+        innerPanel.wantsLayer = true
+        innerPanel.layer?.backgroundColor = Self.innerPanelBG.cgColor
+        innerPanel.layer?.cornerRadius = Self.innerCornerRadius
+        containerView.addSubview(innerPanel)
         
-        let selectedBG = NSView(frame: NSRect(x: padding, y: yOffset, width: width - padding * 2, height: selectedTextRowH))
-        selectedBG.wantsLayer = true
-        selectedBG.layer?.backgroundColor = Self.inputBG.cgColor
-        selectedBG.layer?.cornerRadius = 8
-        containerView.addSubview(selectedBG)
+        // Inside the inner panel:
+        // Selected text row at y:9 inside panel (from top of panel)
+        let selectedRowY = innerPanelH - 9 - 16  // 16 is row height approx
         
-        let docIcon = NSImageView(frame: NSRect(x: padding + 12, y: yOffset + (selectedTextRowH - 18) / 2, width: 18, height: 18))
-        let docConfig = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+        // Document icon
+        let docIcon = NSImageView(frame: NSRect(x: 10, y: selectedRowY - 4, width: 16, height: 16))
+        let docConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
         docIcon.image = NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)?.withSymbolConfiguration(docConfig)
-        docIcon.contentTintColor = Self.secondaryText
-        containerView.addSubview(docIcon)
+        docIcon.contentTintColor = Self.primaryText
+        innerPanel.addSubview(docIcon)
         
-        let truncatedText = selectedText.count > 35 ? String(selectedText.prefix(35)) + "..." : selectedText
-        let selectedLabel = makeLabel("Selected text: \(truncatedText)", size: 12, weight: .regular, color: Self.secondaryText)
-        selectedLabel.frame = NSRect(x: padding + 12 + 18 + 8, y: yOffset + (selectedTextRowH - 16) / 2, width: width - padding * 2 - 50, height: 16)
-        containerView.addSubview(selectedLabel)
+        // Selected text label
+        let truncatedText = selectedText.count > 30 ? String(selectedText.prefix(30)) + "..." : selectedText
+        let selectedLabel = makeLabel("Selected text: \(truncatedText)", size: 12, weight: .regular, color: Self.primaryText)
+        selectedLabel.frame = NSRect(x: 30, y: selectedRowY - 4, width: innerPanel.frame.width - 40, height: 16)
+        innerPanel.addSubview(selectedLabel)
         
-        yOffset -= 12
+        // "Ask anything about selected text" at y:46 inside (from top)
+        let placeholderY = innerPanelH - 46 - 14
+        let inputPlaceholder = makeLabel("Ask anything about selected text", size: 12, weight: .regular, color: Self.primaryText)
+        inputPlaceholder.frame = NSRect(x: 10, y: placeholderY, width: innerPanel.frame.width - 20, height: 14)
+        innerPanel.addSubview(inputPlaceholder)
         
-        let inputPlaceholderH: CGFloat = 36
-        yOffset -= inputPlaceholderH
-        
-        let inputPlaceholder = makeLabel("Ask anything about selected text", size: 13, weight: .regular, color: Self.secondaryText)
-        inputPlaceholder.frame = NSRect(x: padding, y: yOffset + (inputPlaceholderH - 16) / 2, width: width - padding * 2, height: 16)
-        containerView.addSubview(inputPlaceholder)
-        
-        let inputClickArea = ClickThroughButton(frame: NSRect(x: padding, y: yOffset, width: width - padding * 2, height: inputPlaceholderH))
+        // Click area for the inner panel to transition to chat
+        let inputClickArea = ClickThroughButton(frame: innerPanel.bounds)
         inputClickArea.target = self
         inputClickArea.action = #selector(inputPlaceholderTapped)
         inputClickArea.isBordered = false
         inputClickArea.bezelStyle = .shadowlessSquare
-        containerView.addSubview(inputClickArea)
+        innerPanel.addSubview(inputClickArea)
         
-        yOffset -= 20
+        // Action buttons at bottom
+        // "Rephrase with Jio Voice and Tone" at y:150 from top -> AppKit y = height - 150 - buttonH
+        let buttonH: CGFloat = 35  // padding 9 top/bottom + ~17 text
+        let buttonWidth: CGFloat = 321
+        let buttonX: CGFloat = 7
         
-        let buttonH: CGFloat = 44
-        
-        yOffset -= buttonH
+        // Rephrase button: y=150 from top in Figma
+        let rephraseY = height - 150 - buttonH
         let rephraseBtn = makeOptionButton(
             title: "Rephrase with Jio Voice and Tone",
-            frame: NSRect(x: padding, y: yOffset, width: width - padding * 2, height: buttonH),
+            frame: NSRect(x: buttonX, y: rephraseY, width: buttonWidth, height: buttonH),
             action: #selector(rephraseOptionTapped)
         )
         containerView.addSubview(rephraseBtn)
         
-        yOffset -= 8
-        yOffset -= buttonH
+        // Validate button: y=185 from top in Figma
+        let validateY = height - 185 - buttonH
         let validateBtn = makeOptionButton(
             title: "Validate current compliance",
-            frame: NSRect(x: padding, y: yOffset, width: width - padding * 2, height: buttonH),
+            frame: NSRect(x: buttonX, y: validateY, width: buttonWidth, height: buttonH),
             action: #selector(validateOptionTapped)
         )
         containerView.addSubview(validateBtn)
@@ -742,10 +756,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         let container = NSView(frame: frame)
         container.wantsLayer = true
         container.layer?.backgroundColor = Self.buttonBG.cgColor
-        container.layer?.cornerRadius = 8
+        container.layer?.cornerRadius = Self.innerCornerRadius
         
-        let label = makeLabel(title, size: 13, weight: .medium, color: Self.primaryText)
-        label.frame = NSRect(x: 14, y: (frame.height - 17) / 2, width: frame.width - 28, height: 17)
+        let label = makeLabel(title, size: 12, weight: .regular, color: Self.primaryText)
+        label.frame = NSRect(x: 12, y: (frame.height - 14) / 2, width: frame.width - 24, height: 14)
         container.addSubview(label)
         
         let clickArea = ClickThroughButton(frame: NSRect(origin: .zero, size: frame.size))
@@ -757,6 +771,20 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         
         return container
     }
+    
+    private func makeCloseButton() -> NSButton {
+        let btn = NSButton(frame: .zero)
+        let config = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
+        btn.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close")?
+            .withSymbolConfiguration(config)
+        btn.isBordered = false
+        btn.bezelStyle = .shadowlessSquare
+        btn.target = self
+        btn.action = #selector(cancelTapped)
+        btn.contentTintColor = Self.primaryText
+        btn.imageScaling = .scaleProportionallyDown
+        return btn
+    }
 
     // MARK: - Chat Window State
 
@@ -766,34 +794,70 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         
         let width = size.width
         let height = size.height
-        let padding: CGFloat = 16
         
+        // Card background - #252526, corner radius 15
         let cardLayer = CALayer()
         cardLayer.frame = CGRect(origin: .zero, size: size)
         cardLayer.backgroundColor = Self.cardBG.cgColor
-        cardLayer.cornerRadius = 14
-        cardLayer.borderColor = Self.cardBorder.cgColor
-        cardLayer.borderWidth = 1
+        cardLayer.cornerRadius = Self.cardCornerRadius
         containerView.layer?.addSublayer(cardLayer)
         
-        let headerH: CGFloat = 44
-        let inputAreaH: CGFloat = 56
-        let contentH = height - headerH - inputAreaH
+        // Header: same as options menu - y=9 from top
+        let headerY = height - 9 - 16
         
-        let headerY = height - headerH
-        let avatar = makeAvatarImageView(size: 24)
-        avatar.frame = NSRect(x: padding, y: headerY + (headerH - 24) / 2, width: 24, height: 24)
+        // Product logo: 16x16 at x:9
+        let avatar = makeAvatarImageView(size: 16)
+        avatar.frame = NSRect(x: 9, y: headerY, width: 16, height: 16)
         containerView.addSubview(avatar)
         
-        let titleLabel = makeLabel("Tone Studio", size: 14, weight: .semibold, color: Self.primaryText)
-        titleLabel.frame = NSRect(x: padding + 24 + 10, y: headerY + (headerH - 18) / 2, width: 200, height: 18)
+        // Title "Tone Studio": x:31, font-size:12, medium weight, 80% opacity
+        let titleLabel = makeLabel("Tone Studio", size: 12, weight: .medium, color: Self.titleText)
+        titleLabel.frame = NSRect(x: 31, y: headerY, width: 200, height: 16)
         containerView.addSubview(titleLabel)
         
-        let closeBtn = makeIconButton(symbolName: "xmark", action: #selector(cancelTapped))
-        closeBtn.frame = NSRect(x: width - padding - 28, y: headerY + (headerH - 28) / 2, width: 28, height: 28)
+        // Close button (X): 16x16 at top-right
+        let closeBtn = makeCloseButton()
+        closeBtn.frame = NSRect(x: width - 16 - 14, y: headerY, width: 16, height: 16)
         containerView.addSubview(closeBtn)
         
-        let scrollView = NSScrollView(frame: NSRect(x: 0, y: inputAreaH, width: width, height: contentH))
+        // Input area at bottom: inset 7px from sides, height ~44px
+        // In Figma: inset [384px from top, 7px sides, 7px bottom] for 428px height
+        // So input panel y = 7, height = 428 - 384 - 7 = 37
+        let inputPanelH: CGFloat = 44
+        let inputPanelY: CGFloat = 7
+        
+        let inputBG = NSView(frame: NSRect(x: 7, y: inputPanelY, width: width - 14, height: inputPanelH))
+        inputBG.wantsLayer = true
+        inputBG.layer?.backgroundColor = Self.innerPanelBG.cgColor
+        inputBG.layer?.cornerRadius = Self.innerCornerRadius
+        containerView.addSubview(inputBG)
+        
+        let textField = NSTextField(frame: NSRect(x: 10, y: (inputPanelH - 16) / 2, width: inputBG.frame.width - 20, height: 16))
+        textField.placeholderString = "Ask anything about selected text"
+        textField.placeholderAttributedString = NSAttributedString(
+            string: "Ask anything about selected text",
+            attributes: [
+                .foregroundColor: Self.secondaryText,
+                .font: NSFont.systemFont(ofSize: 12)
+            ]
+        )
+        textField.isBordered = false
+        textField.drawsBackground = false
+        textField.backgroundColor = .clear
+        textField.textColor = Self.primaryText
+        textField.font = .systemFont(ofSize: 12)
+        textField.focusRingType = .none
+        textField.delegate = self
+        textField.isEnabled = !isLoadingInline
+        inputBG.addSubview(textField)
+        inputField = textField
+        
+        // Content area between header and input
+        let contentTopY: CGFloat = inputPanelY + inputPanelH + 7  // 7px gap
+        let contentBottomY: CGFloat = height - 33  // 33px from top for header area
+        let contentH = contentBottomY - contentTopY
+        
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: contentTopY, width: width, height: contentH))
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.borderType = .noBorder
@@ -811,84 +875,65 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         chatScrollView = scrollView
         chatContentView = contentView
         
-        let inputBG = NSView(frame: NSRect(x: padding, y: padding, width: width - padding * 2, height: inputAreaH - padding * 2 + 8))
-        inputBG.wantsLayer = true
-        inputBG.layer?.backgroundColor = Self.inputBG.cgColor
-        inputBG.layer?.cornerRadius = 8
-        containerView.addSubview(inputBG)
-        
-        let textField = NSTextField(frame: NSRect(x: padding + 12, y: padding + 4, width: width - padding * 2 - 24, height: inputAreaH - padding * 2))
-        textField.placeholderString = "Ask anything about selected text"
-        textField.isBordered = false
-        textField.drawsBackground = false
-        textField.backgroundColor = .clear
-        textField.textColor = Self.primaryText
-        textField.font = .systemFont(ofSize: 13)
-        textField.focusRingType = .none
-        textField.delegate = self
-        textField.isEnabled = !isLoadingInline
-        containerView.addSubview(textField)
-        inputField = textField
-        
         DispatchQueue.main.async { [weak self] in
             self?.scrollToBottom()
         }
     }
     
     private func buildChatContentInView(_ contentView: NSView, width: CGFloat, availableHeight: CGFloat) {
-        let padding: CGFloat = 16
+        let padding: CGFloat = 15
         var yOffset: CGFloat = 10
         var totalHeight: CGFloat = 10
         
+        // Selected text at y:53 from top in Figma (relative to chat window)
         if !selectedText.isEmpty {
-            let textHeight = estimateTextHeight(selectedText, width: width - padding * 2 - 20, fontSize: 13)
-            let messageH = max(textHeight + 16, 30)
-            
-            let messageBG = NSView(frame: NSRect(x: padding, y: yOffset, width: width - padding * 2, height: messageH))
-            messageBG.wantsLayer = true
-            contentView.addSubview(messageBG)
+            let textHeight = estimateTextHeight(selectedText, width: width - padding * 2, fontSize: 12)
+            let messageH = max(textHeight + 8, 20)
             
             let messageLabel = NSTextField(wrappingLabelWithString: selectedText)
-            messageLabel.font = .systemFont(ofSize: 13)
+            messageLabel.font = .systemFont(ofSize: 12)
             messageLabel.textColor = Self.primaryText
             messageLabel.isBezeled = false
             messageLabel.drawsBackground = false
             messageLabel.isEditable = false
             messageLabel.isSelectable = true
-            messageLabel.frame = NSRect(x: padding + 10, y: yOffset + 8, width: width - padding * 2 - 20, height: textHeight)
+            messageLabel.frame = NSRect(x: padding, y: yOffset, width: width - padding * 2, height: textHeight)
             contentView.addSubview(messageLabel)
             
             yOffset += messageH + 12
             totalHeight += messageH + 12
         }
         
+        // Action pill - RIGHT ALIGNED as per Figma
         if !lastAction.isEmpty {
             let pillWidth = estimatePillWidth(lastAction)
-            let pillH: CGFloat = 32
-            let pillX = width - padding - pillWidth
+            let pillH: CGFloat = 30
+            let pillX = width - padding - pillWidth  // Right-aligned
             
             let pillBG = NSView(frame: NSRect(x: pillX, y: yOffset, width: pillWidth, height: pillH))
             pillBG.wantsLayer = true
             pillBG.layer?.backgroundColor = Self.actionPillBG.cgColor
-            pillBG.layer?.cornerRadius = pillH / 2
+            pillBG.layer?.cornerRadius = Self.pillCornerRadius
             contentView.addSubview(pillBG)
             
-            let pillLabel = makeLabel(lastAction, size: 12, weight: .medium, color: Self.primaryText)
-            pillLabel.frame = NSRect(x: pillX + 14, y: yOffset + (pillH - 15) / 2, width: pillWidth - 28, height: 15)
-            contentView.addSubview(pillLabel)
+            let pillLabel = makeLabel(lastAction, size: 12, weight: .regular, color: Self.primaryText)
+            pillLabel.frame = NSRect(x: 12, y: (pillH - 14) / 2, width: pillWidth - 24, height: 14)
+            pillBG.addSubview(pillLabel)
             
-            yOffset += pillH + 12
-            totalHeight += pillH + 12
+            yOffset += pillH + 16
+            totalHeight += pillH + 16
         }
         
+        // Conversation messages
         for message in conversationMessages {
             if message.role == .assistant {
-                let textHeight = estimateTextHeight(message.content, width: width - padding * 2 - 20, fontSize: 13)
-                let messageH = textHeight + 60
+                let textHeight = estimateTextHeight(message.content, width: width - padding * 2, fontSize: 12)
+                let messageH = textHeight + 50
                 
+                // AI response text with line-height 1.2
                 let responseLabel = NSTextField(wrappingLabelWithString: message.content)
-                responseLabel.font = .systemFont(ofSize: 13)
-                responseLabel.textColor = NSColor(white: 0.85, alpha: 1)
+                responseLabel.font = .systemFont(ofSize: 12)
+                responseLabel.textColor = Self.primaryText
                 responseLabel.isBezeled = false
                 responseLabel.drawsBackground = false
                 responseLabel.isEditable = false
@@ -896,12 +941,13 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
                 responseLabel.frame = NSRect(x: padding, y: yOffset, width: width - padding * 2, height: textHeight)
                 contentView.addSubview(responseLabel)
                 
-                yOffset += textHeight + 12
+                yOffset += textHeight + 8
                 
+                // Action icons row - compact spacing
                 let actionsY = yOffset
                 var btnX: CGFloat = padding
-                let btnSize: CGFloat = 24
-                let btnSpacing: CGFloat = 8
+                let btnSize: CGFloat = 18
+                let btnSpacing: CGFloat = 6
                 
                 let copyBtn = makeSmallIconButton(symbolName: "doc.on.doc", action: #selector(copyTapped))
                 copyBtn.frame = NSRect(x: btnX, y: actionsY, width: btnSize, height: btnSize)
@@ -926,11 +972,11 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
                 totalHeight += messageH
                 
             } else if message.role == .user && message.content != selectedText {
-                let textHeight = estimateTextHeight(message.content, width: width - padding * 2 - 20, fontSize: 13)
-                let messageH = max(textHeight + 16, 30)
+                let textHeight = estimateTextHeight(message.content, width: width - padding * 2, fontSize: 12)
+                let messageH = max(textHeight + 8, 20)
                 
                 let userLabel = NSTextField(wrappingLabelWithString: message.content)
-                userLabel.font = .systemFont(ofSize: 13)
+                userLabel.font = .systemFont(ofSize: 12)
                 userLabel.textColor = Self.primaryText
                 userLabel.isBezeled = false
                 userLabel.drawsBackground = false
@@ -944,8 +990,9 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             }
         }
         
+        // Loading indicator
         if isLoadingInline {
-            let spinnerSize: CGFloat = 18
+            let spinnerSize: CGFloat = 16
             let spinner = NSProgressIndicator(frame: NSRect(x: padding, y: yOffset, width: spinnerSize, height: spinnerSize))
             spinner.style = .spinning
             spinner.controlSize = .small
@@ -956,7 +1003,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             inlineSpinner = spinner
             
             let loadingLabel = makeLabel("Generating...", size: 12, weight: .regular, color: Self.secondaryText)
-            loadingLabel.frame = NSRect(x: padding + spinnerSize + 8, y: yOffset + 1, width: 100, height: 16)
+            loadingLabel.frame = NSRect(x: padding + spinnerSize + 8, y: yOffset, width: 100, height: 16)
             contentView.addSubview(loadingLabel)
             
             yOffset += spinnerSize + 16

@@ -1113,11 +1113,28 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         docIcon.contentTintColor = Self.primaryText
         selectedRowContainer.addSubview(docIcon)
         
-        // Selected text label inside container
-        let truncatedText = selectedText.count > 28 ? String(selectedText.prefix(28)) + "..." : selectedText
+        // Selected text label inside container (reduced width for close button)
+        let truncatedText = selectedText.count > 25 ? String(selectedText.prefix(25)) + "..." : selectedText
         let selectedLabel = makeLabel("Selected text: \(truncatedText)", size: 12, weight: .regular, color: Self.primaryText)
-        selectedLabel.frame = NSRect(x: 28, y: (selectedRowH - 16) / 2, width: buttonWidth - 48, height: 16)
+        selectedLabel.frame = NSRect(x: 28, y: (selectedRowH - 16) / 2, width: buttonWidth - 68, height: 16)
         selectedRowContainer.addSubview(selectedLabel)
+        
+        // Close button to discard selected text
+        let closeBtn = NSButton(frame: NSRect(
+            x: buttonWidth - 20 - 8 - 16,
+            y: (selectedRowH - 16) / 2,
+            width: 16,
+            height: 16
+        ))
+        let closeConfig = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
+        closeBtn.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Clear selected text")?
+            .withSymbolConfiguration(closeConfig)
+        closeBtn.isBordered = false
+        closeBtn.bezelStyle = .shadowlessSquare
+        closeBtn.contentTintColor = Self.secondaryText
+        closeBtn.target = self
+        closeBtn.action = #selector(clearSelectedTextTapped)
+        selectedRowContainer.addSubview(closeBtn)
         
         // 2. Input field positioned below selected text with 10px gap
         let textFieldH: CGFloat = 24
@@ -1411,11 +1428,28 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             docIcon.contentTintColor = Self.primaryText
             selectedContainer.addSubview(docIcon)
             
-            // Selected text label (truncated)
-            let truncatedText = selectedText.count > 35 ? String(selectedText.prefix(35)) + "..." : selectedText
+            // Selected text label (truncated, reduced width for close button)
+            let truncatedText = selectedText.count > 30 ? String(selectedText.prefix(30)) + "..." : selectedText
             let selectedLabel = makeLabel("Selected text: \(truncatedText)", size: 12, weight: .regular, color: Self.primaryText)
-            selectedLabel.frame = NSRect(x: 30, y: (containerH - 14) / 2, width: containerW - 40, height: 14)
+            selectedLabel.frame = NSRect(x: 30, y: (containerH - 14) / 2, width: containerW - 60, height: 14)
             selectedContainer.addSubview(selectedLabel)
+            
+            // Close button to discard selected text
+            let closeBtnChat = NSButton(frame: NSRect(
+                x: containerW - 10 - 16,
+                y: (containerH - 16) / 2,
+                width: 16,
+                height: 16
+            ))
+            let closeChatConfig = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
+            closeBtnChat.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Clear selected text")?
+                .withSymbolConfiguration(closeChatConfig)
+            closeBtnChat.isBordered = false
+            closeBtnChat.bezelStyle = .shadowlessSquare
+            closeBtnChat.contentTintColor = Self.secondaryText
+            closeBtnChat.target = self
+            closeBtnChat.action = #selector(clearSelectedTextTapped)
+            selectedContainer.addSubview(closeBtnChat)
             
             yPos -= 12  // Gap below selected text
         }
@@ -1814,6 +1848,12 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     
     @objc private func quickActionsSendTapped() {
         submitQuickActionsInput()
+    }
+    
+    @objc private func clearSelectedTextTapped() {
+        selectedText = ""
+        clearConversation()
+        updateUI(currentState)
     }
     
     private func submitQuickActionsInput() {

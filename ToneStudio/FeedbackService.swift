@@ -6,6 +6,7 @@ actor FeedbackService {
     enum FeedbackError: LocalizedError {
         case serverError(statusCode: Int, body: String)
         case networkError(Error)
+        case authenticationFailed(Error)
         
         var errorDescription: String? {
             switch self {
@@ -13,6 +14,8 @@ actor FeedbackService {
                 return "Server error (\(code))"
             case .networkError(let error):
                 return error.localizedDescription
+            case .authenticationFailed(let error):
+                return "Authentication failed: \(error.localizedDescription)"
             }
         }
     }
@@ -29,9 +32,11 @@ actor FeedbackService {
     }
     
     private let deviceId: String
+    private let userService: UserService
     
     init() {
         self.deviceId = Self.getOrCreateDeviceId()
+        self.userService = UserService.shared
     }
     
     func submit(
@@ -40,6 +45,15 @@ actor FeedbackService {
         originalContent: String,
         comment: String? = nil
     ) async throws {
+        // Ensure user is authenticated before submitting feedback
+        // This is required because the backend looks up the user by deviceId
+        do {
+            try await userService.ensureAuthenticated()
+        } catch {
+            Logger.feedback.error("Failed to authenticate before feedback: \(error.localizedDescription)")
+            throw FeedbackError.authenticationFailed(error)
+        }
+        
         let apiKey = KeychainHelper.load() ?? ""
         
         var request = URLRequest(url: URL(string: AppConstants.rewriteBaseURL + AppConstants.feedbackEndpoint)!)

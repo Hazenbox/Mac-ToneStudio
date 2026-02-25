@@ -300,6 +300,21 @@ struct ValidationResult: Codable {
     let violations: [Violation]
     let autoFixes: [AutoFix]
     let processingTimeMs: Double
+    let skippedReason: String?  // If validation was skipped (e.g., for general chat)
+    
+    init(passed: Bool, score: Int, violations: [Violation], autoFixes: [AutoFix],
+         processingTimeMs: Double, skippedReason: String? = nil) {
+        self.passed = passed
+        self.score = score
+        self.violations = violations
+        self.autoFixes = autoFixes
+        self.processingTimeMs = processingTimeMs
+        self.skippedReason = skippedReason
+    }
+    
+    var wasSkipped: Bool {
+        skippedReason != nil
+    }
     
     var errorCount: Int {
         violations.filter { $0.severity == .error }.count
@@ -323,6 +338,15 @@ struct ValidationResult: Codable {
         violations: [],
         autoFixes: [],
         processingTimeMs: 0
+    )
+    
+    static let skipped = ValidationResult(
+        passed: true,
+        score: 100,
+        violations: [],
+        autoFixes: [],
+        processingTimeMs: 0,
+        skippedReason: "validation not required"
     )
 }
 

@@ -279,6 +279,107 @@ final class HoverButton: NSButton {
     }
 }
 
+// MARK: - Draggable FAB View
+
+final class DraggableFABView: NSView {
+    var onDragStart: (() -> Void)?
+    var onDrag: ((NSPoint) -> Void)?
+    var onDragEnd: (() -> Void)?
+    var onClick: (() -> Void)?
+    
+    private var isDragging = false
+    private let dragThreshold: CGFloat = 5
+    private var mouseDownLocation: NSPoint?
+    private var initialWindowOrigin: NSPoint?
+    
+    override func mouseDown(with event: NSEvent) {
+        mouseDownLocation = NSEvent.mouseLocation
+        initialWindowOrigin = window?.frame.origin
+        isDragging = false
+    }
+    
+    override func mouseDragged(with event: NSEvent) {
+        guard let startLoc = mouseDownLocation, let initialOrigin = initialWindowOrigin else { return }
+        let currentLoc = NSEvent.mouseLocation
+        let distance = hypot(currentLoc.x - startLoc.x, currentLoc.y - startLoc.y)
+        
+        if distance > dragThreshold {
+            if !isDragging {
+                isDragging = true
+                onDragStart?()
+            }
+            // Calculate new window position based on drag delta
+            let deltaX = currentLoc.x - startLoc.x
+            let deltaY = currentLoc.y - startLoc.y
+            let newOrigin = NSPoint(x: initialOrigin.x + deltaX, y: initialOrigin.y + deltaY)
+            onDrag?(newOrigin)
+        }
+    }
+    
+    override func mouseUp(with event: NSEvent) {
+        if isDragging {
+            onDragEnd?()
+        } else {
+            onClick?()
+        }
+        isDragging = false
+        mouseDownLocation = nil
+        initialWindowOrigin = nil
+    }
+}
+
+// MARK: - Hoverable Option View
+
+final class HoverableOptionView: NSView {
+    var isEnabled: Bool = true
+    var normalColor: NSColor = NSColor(red: 0.18, green: 0.18, blue: 0.20, alpha: 1)
+    var hoverColor: NSColor = NSColor.white.withAlphaComponent(0.08)
+    
+    private var trackingArea: NSTrackingArea?
+    
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+    }
+    
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        wantsLayer = true
+    }
+    
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingArea {
+            removeTrackingArea(existing)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeAlways],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+    
+    override func mouseEntered(with event: NSEvent) {
+        guard isEnabled else { return }
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.12
+            ctx.allowsImplicitAnimation = true
+            layer?.backgroundColor = hoverColor.cgColor
+        }
+    }
+    
+    override func mouseExited(with event: NSEvent) {
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.12
+            ctx.allowsImplicitAnimation = true
+            layer?.backgroundColor = normalColor.cgColor
+        }
+    }
+}
+
 // MARK: - TooltipWindow
 
 @MainActor
@@ -308,6 +409,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
 
     // MARK: - UI References
     private var inputField: NSTextField?
+    private var quickActionsInputField: NSTextField?
     private var chatScrollView: NSScrollView?
     private var chatContentView: NSView?
     private var inlineSpinner: NSProgressIndicator?
@@ -315,6 +417,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     private var fabTrackingArea: NSTrackingArea?
     private var isFabHovered: Bool = false
     private var lastChatWindowFrame: NSRect?
+    private var draggableFABView: DraggableFABView?
 
     // MARK: - Event monitors
     private var globalClickMonitor: Any?
@@ -734,9 +837,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     
     private func animateResizeAndReanchor(to size: NSSize) {
         var frame = panel.frame
-        let topLeft = CGPoint(x: frame.minX, y: frame.maxY)
+        // Animate to center of current position for FAB
+        let currentCenter = CGPoint(x: frame.midX, y: frame.midY)
         frame.size = size
-        frame.origin = CGPoint(x: topLeft.x, y: topLeft.y - size.height)
+        frame.origin = CGPoint(x: currentCenter.x - size.width / 2, y: currentCenter.y - size.height / 2)
         
         if let screen = NSScreen.screens.first(where: { $0.frame.intersects(frame) }) ?? NSScreen.main {
             let visibleFrame = screen.visibleFrame
@@ -754,9 +858,11 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             }
         }
         
+        // iOS-style spring animation (quick and snappy)
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.2
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            ctx.duration = 0.25
+            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.0)
+            ctx.allowsImplicitAnimation = true
             panel.animator().setFrame(frame, display: true)
         }
     }
@@ -881,15 +987,19 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         containerView.addSubview(closeBtn)
         fabCloseButton = closeBtn
         
-        // Main click area for restoring chat
-        let clickArea = ClickThroughButton(frame: NSRect(origin: .zero, size: size))
-        clickArea.target = self
-        clickArea.action = #selector(fabTapped)
-        clickArea.isBordered = false
-        clickArea.bezelStyle = .shadowlessSquare
-        containerView.addSubview(clickArea)
+        // Draggable area - allows click to restore chat OR drag to reposition
+        let dragView = DraggableFABView(frame: NSRect(origin: .zero, size: size))
+        dragView.onClick = { [weak self] in
+            guard let self, !self.isFabHovered else { return }
+            self.restoreChatFromFAB()
+        }
+        dragView.onDrag = { [weak self] newOrigin in
+            self?.panel.setFrameOrigin(newOrigin)
+        }
+        containerView.addSubview(dragView)
+        draggableFABView = dragView
         
-        // Add tracking area for hover detection
+        // Add tracking area for hover detection (shows close button)
         setupFABTrackingArea()
     }
     
@@ -936,11 +1046,12 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
 
     private func buildOptionsMenuUI(size: NSSize) {
         currentState = .optionsMenu
-        panel.allowsKeyStatus = false
+        panel.allowsKeyStatus = true  // Allow key for input field
         clearContainer()
         
         let width = size.width
         let height = size.height
+        let padding: CGFloat = 7
         
         // Card background - #252526, corner radius 15
         let cardLayer = CALayer()
@@ -949,7 +1060,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         cardLayer.cornerRadius = Self.cardCornerRadius
         containerView.layer?.addSublayer(cardLayer)
         
-        // Header: y=9 from top (in Figma coords, so height - 9 - elementHeight in AppKit)
+        // Header: y=9 from top
         let headerY = height - 9 - 16
         
         // Product logo: 16x16 at x:9
@@ -957,98 +1068,146 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         avatar.frame = NSRect(x: 9, y: headerY, width: 16, height: 16)
         containerView.addSubview(avatar)
         
-        // Title "Tone Studio": x:31, font-size:12, medium weight, 80% opacity
+        // Title "Tone Studio"
         let titleLabel = makeLabel("Tone Studio", size: 12, weight: .medium, color: Self.titleText)
         titleLabel.frame = NSRect(x: 31, y: headerY, width: 200, height: 16)
         containerView.addSubview(titleLabel)
         
-        // Close button (X): 16x16 at x:305 (width - 16 - 14 = 305 for 335 width)
+        // Close button (X)
         let closeBtn = makeCloseButton()
         closeBtn.frame = NSRect(x: width - 16 - 14, y: headerY, width: 16, height: 16)
         containerView.addSubview(closeBtn)
         
-        // Dark inner panel: inset 33px from top, 7px from sides, 85px from bottom
-        // In AppKit: y = 85, height = totalHeight - 33 - 85 = 220 - 33 - 85 = 102
-        let innerPanelY: CGFloat = 85
-        let innerPanelH: CGFloat = height - 33 - 85
-        let innerPanel = NSView(frame: NSRect(x: 7, y: innerPanelY, width: width - 14, height: innerPanelH))
-        innerPanel.wantsLayer = true
-        innerPanel.layer?.backgroundColor = Self.innerPanelBG.cgColor
-        innerPanel.layer?.cornerRadius = Self.innerCornerRadius
-        containerView.addSubview(innerPanel)
+        // === IMPROVED LAYOUT ===
+        // Action buttons at bottom with better spacing
+        let buttonH: CGFloat = 42
+        let buttonWidth: CGFloat = width - padding * 2
+        let buttonSpacing: CGFloat = 8
         
-        // Inside the inner panel:
-        // Selected text row at y:9 inside panel (from top of panel)
-        let selectedRowY = innerPanelH - 9 - 16  // 16 is row height approx
+        // Validate button at bottom (disabled with "coming soon")
+        let validateY: CGFloat = padding + 4
+        let validateBtn = makeOptionButton(
+            title: "Validate current compliance",
+            frame: NSRect(x: padding, y: validateY, width: buttonWidth, height: buttonH),
+            action: #selector(validateOptionTapped),
+            enabled: false
+        )
+        containerView.addSubview(validateBtn)
         
-        // Document icon
-        let docIcon = NSImageView(frame: NSRect(x: 10, y: selectedRowY - 4, width: 16, height: 16))
-        let docConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
-        docIcon.image = NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)?.withSymbolConfiguration(docConfig)
-        docIcon.contentTintColor = Self.primaryText
-        innerPanel.addSubview(docIcon)
+        // "coming soon" badge on validate button
+        let badge = makeLabel("coming soon", size: 10, weight: .medium, color: Self.secondaryText)
+        badge.frame = NSRect(x: buttonWidth - 85, y: (buttonH - 12) / 2, width: 75, height: 12)
+        badge.alignment = .right
+        validateBtn.addSubview(badge)
         
-        // Selected text label
-        let truncatedText = selectedText.count > 30 ? String(selectedText.prefix(30)) + "..." : selectedText
-        let selectedLabel = makeLabel("Selected text: \(truncatedText)", size: 12, weight: .regular, color: Self.primaryText)
-        selectedLabel.frame = NSRect(x: 30, y: selectedRowY - 4, width: innerPanel.frame.width - 40, height: 16)
-        innerPanel.addSubview(selectedLabel)
-        
-        // "Ask anything about selected text" at y:46 inside (from top)
-        let placeholderY = innerPanelH - 46 - 14
-        let inputPlaceholder = makeLabel("Ask anything about selected text", size: 12, weight: .regular, color: Self.primaryText)
-        inputPlaceholder.frame = NSRect(x: 10, y: placeholderY, width: innerPanel.frame.width - 20, height: 14)
-        innerPanel.addSubview(inputPlaceholder)
-        
-        // Click area for the inner panel to transition to chat
-        let inputClickArea = ClickThroughButton(frame: innerPanel.bounds)
-        inputClickArea.target = self
-        inputClickArea.action = #selector(inputPlaceholderTapped)
-        inputClickArea.isBordered = false
-        inputClickArea.bezelStyle = .shadowlessSquare
-        innerPanel.addSubview(inputClickArea)
-        
-        // Action buttons at bottom
-        // "Rephrase with Jio Voice and Tone" at y:150 from top -> AppKit y = height - 150 - buttonH
-        let buttonH: CGFloat = 35  // padding 9 top/bottom + ~17 text
-        let buttonWidth: CGFloat = 321
-        let buttonX: CGFloat = 7
-        
-        // Rephrase button: y=150 from top in Figma
-        let rephraseY = height - 150 - buttonH
+        // Rephrase button above validate
+        let rephraseY = validateY + buttonH + buttonSpacing
         let rephraseBtn = makeOptionButton(
             title: "Rephrase with Jio Voice and Tone",
-            frame: NSRect(x: buttonX, y: rephraseY, width: buttonWidth, height: buttonH),
-            action: #selector(rephraseOptionTapped)
+            frame: NSRect(x: padding, y: rephraseY, width: buttonWidth, height: buttonH),
+            action: #selector(rephraseOptionTapped),
+            enabled: true
         )
         containerView.addSubview(rephraseBtn)
         
-        // Validate button: y=185 from top in Figma
-        let validateY = height - 185 - buttonH
-        let validateBtn = makeOptionButton(
-            title: "Validate current compliance",
-            frame: NSRect(x: buttonX, y: validateY, width: buttonWidth, height: buttonH),
-            action: #selector(validateOptionTapped)
+        // Input panel above buttons
+        let inputPanelY = rephraseY + buttonH + 12
+        let inputPanelH: CGFloat = height - inputPanelY - 33 - 8  // Leave room for header
+        let inputPanel = NSView(frame: NSRect(x: padding, y: inputPanelY, width: buttonWidth, height: inputPanelH))
+        inputPanel.wantsLayer = true
+        inputPanel.layer?.backgroundColor = Self.innerPanelBG.cgColor
+        inputPanel.layer?.cornerRadius = Self.innerCornerRadius
+        containerView.addSubview(inputPanel)
+        
+        // Selected text row at top of input panel
+        let selectedRowY = inputPanelH - 12 - 16
+        
+        // Document icon
+        let docIcon = NSImageView(frame: NSRect(x: 12, y: selectedRowY, width: 16, height: 16))
+        let docConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
+        docIcon.image = NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)?.withSymbolConfiguration(docConfig)
+        docIcon.contentTintColor = Self.primaryText
+        inputPanel.addSubview(docIcon)
+        
+        // Selected text label
+        let truncatedText = selectedText.count > 28 ? String(selectedText.prefix(28)) + "..." : selectedText
+        let selectedLabel = makeLabel("Selected text: \(truncatedText)", size: 12, weight: .regular, color: Self.primaryText)
+        selectedLabel.frame = NSRect(x: 32, y: selectedRowY, width: buttonWidth - 44, height: 16)
+        inputPanel.addSubview(selectedLabel)
+        
+        // Functional input field
+        let sendBtnSize: CGFloat = 24
+        let textFieldY: CGFloat = 10
+        let textFieldH: CGFloat = 24
+        let textField = NSTextField(frame: NSRect(
+            x: 12,
+            y: textFieldY,
+            width: buttonWidth - 24 - sendBtnSize - 8,
+            height: textFieldH
+        ))
+        textField.placeholderString = "Ask anything about selected text"
+        textField.placeholderAttributedString = NSAttributedString(
+            string: "Ask anything about selected text",
+            attributes: [
+                .foregroundColor: Self.secondaryText,
+                .font: NSFont.systemFont(ofSize: 12)
+            ]
         )
-        containerView.addSubview(validateBtn)
+        textField.isBordered = false
+        textField.drawsBackground = false
+        textField.backgroundColor = .clear
+        textField.textColor = Self.primaryText
+        textField.font = .systemFont(ofSize: 12)
+        textField.focusRingType = .none
+        textField.delegate = self
+        inputPanel.addSubview(textField)
+        quickActionsInputField = textField
+        
+        // Send button
+        let sendBtn = NSButton(frame: NSRect(
+            x: buttonWidth - 12 - sendBtnSize,
+            y: textFieldY,
+            width: sendBtnSize,
+            height: sendBtnSize
+        ))
+        let sendConfig = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+        sendBtn.image = NSImage(systemSymbolName: "arrow.up.circle.fill", accessibilityDescription: "Send")?
+            .withSymbolConfiguration(sendConfig)
+        sendBtn.isBordered = false
+        sendBtn.bezelStyle = .shadowlessSquare
+        sendBtn.contentTintColor = NSColor.systemBlue
+        sendBtn.target = self
+        sendBtn.action = #selector(quickActionsSendTapped)
+        inputPanel.addSubview(sendBtn)
+        
+        // Focus the input field after a short delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.panel.makeKeyAndOrderFront(nil)
+            self?.panel.makeFirstResponder(textField)
+        }
     }
     
-    private func makeOptionButton(title: String, frame: NSRect, action: Selector) -> NSView {
-        let container = NSView(frame: frame)
-        container.wantsLayer = true
+    private func makeOptionButton(title: String, frame: NSRect, action: Selector, enabled: Bool = true) -> HoverableOptionView {
+        let container = HoverableOptionView(frame: frame)
+        container.normalColor = Self.buttonBG
+        container.hoverColor = enabled ? NSColor.white.withAlphaComponent(0.08) : Self.buttonBG
+        container.isEnabled = enabled
         container.layer?.backgroundColor = Self.buttonBG.cgColor
         container.layer?.cornerRadius = Self.innerCornerRadius
         
-        let label = makeLabel(title, size: 12, weight: .regular, color: Self.primaryText)
-        label.frame = NSRect(x: 12, y: (frame.height - 14) / 2, width: frame.width - 24, height: 14)
+        let labelColor = enabled ? Self.primaryText : Self.secondaryText
+        let label = makeLabel(title, size: 13, weight: .regular, color: labelColor)
+        label.frame = NSRect(x: 14, y: (frame.height - 16) / 2, width: frame.width - 100, height: 16)
         container.addSubview(label)
         
-        let clickArea = ClickThroughButton(frame: NSRect(origin: .zero, size: frame.size))
-        clickArea.target = self
-        clickArea.action = action
-        clickArea.isBordered = false
-        clickArea.bezelStyle = .shadowlessSquare
-        container.addSubview(clickArea)
+        if enabled {
+            let clickArea = ClickThroughButton(frame: NSRect(origin: .zero, size: frame.size))
+            clickArea.target = self
+            clickArea.action = action
+            clickArea.isBordered = false
+            clickArea.bezelStyle = .shadowlessSquare
+            container.addSubview(clickArea)
+        }
         
         return container
     }
@@ -1492,7 +1651,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
 
     private func makeAvatarImageView(size: CGFloat) -> NSImageView {
         let imageView = NSImageView(frame: NSRect(x: 0, y: 0, width: size, height: size))
-        imageView.image = NSImage(named: "ai_avatar")
+        imageView.image = NSImage(named: "ProductLogo")
         imageView.imageScaling = .scaleProportionallyUpOrDown
         imageView.imageAlignment = .alignCenter
         imageView.wantsLayer = true
@@ -1606,7 +1765,12 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         if commandSelector == #selector(NSResponder.insertNewline(_:)) {
-            submitInput()
+            // Check which input field triggered this
+            if control == quickActionsInputField {
+                submitQuickActionsInput()
+            } else {
+                submitInput()
+            }
             return true
         }
         return false
@@ -1657,6 +1821,26 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         submitInput()
     }
     
+    @objc private func quickActionsSendTapped() {
+        submitQuickActionsInput()
+    }
+    
+    private func submitQuickActionsInput() {
+        guard let field = quickActionsInputField else { return }
+        let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if text.isEmpty {
+            // Empty input = just transition to chat with focus on input
+            updateUI(.chatWindow)
+            focusInputField()
+        } else {
+            // User typed something - submit as custom prompt
+            field.stringValue = ""
+            lastAction = text
+            onCustomPrompt?(text)
+        }
+    }
+    
     private func focusInputField() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
             guard let self, let field = self.inputField else { return }
@@ -1695,25 +1879,54 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     }
     
     private func restoreChatFromFAB() {
-        // Restore to previous chat window position with animation
+        // Restore to previous chat window position with iOS-style spring animation
+        let height = calculateChatWindowHeight()
+        let size = NSSize(width: Self.chatWindowWidth, height: height)
+        
+        // Calculate target frame - use last position or center from FAB
+        var targetFrame: NSRect
         if let lastFrame = lastChatWindowFrame {
-            let height = calculateChatWindowHeight()
-            let size = NSSize(width: Self.chatWindowWidth, height: height)
-            clearContainer()
-            buildChatWindowUI(size: size)
-            currentState = .chatWindow
-            panel.isMovableByWindowBackground = true
-            
-            var targetFrame = lastFrame
+            targetFrame = lastFrame
             targetFrame.size = size
-            
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.2
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                panel.animator().setFrame(targetFrame, display: true)
-            }
         } else {
-            updateUI(.chatWindow)
+            // Center the chat window on the FAB position
+            let fabCenter = CGPoint(x: panel.frame.midX, y: panel.frame.midY)
+            targetFrame = NSRect(
+                x: fabCenter.x - size.width / 2,
+                y: fabCenter.y - size.height / 2,
+                width: size.width,
+                height: size.height
+            )
+        }
+        
+        // Ensure on screen
+        if let screen = NSScreen.screens.first(where: { $0.frame.intersects(targetFrame) }) ?? NSScreen.main {
+            let visibleFrame = screen.visibleFrame
+            if targetFrame.minX < visibleFrame.minX + Self.screenEdgePadding {
+                targetFrame.origin.x = visibleFrame.minX + Self.screenEdgePadding
+            }
+            if targetFrame.maxX > visibleFrame.maxX - Self.screenEdgePadding {
+                targetFrame.origin.x = visibleFrame.maxX - size.width - Self.screenEdgePadding
+            }
+            if targetFrame.minY < visibleFrame.minY + Self.screenEdgePadding {
+                targetFrame.origin.y = visibleFrame.minY + Self.screenEdgePadding
+            }
+            if targetFrame.maxY > visibleFrame.maxY - Self.screenEdgePadding {
+                targetFrame.origin.y = visibleFrame.maxY - size.height - Self.screenEdgePadding
+            }
+        }
+        
+        clearContainer()
+        buildChatWindowUI(size: size)
+        currentState = .chatWindow
+        panel.isMovableByWindowBackground = true
+        
+        // iOS-style spring animation (quick expand)
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.3
+            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.0)
+            ctx.allowsImplicitAnimation = true
+            panel.animator().setFrame(targetFrame, display: true)
         }
     }
     

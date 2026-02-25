@@ -59,7 +59,7 @@ actor RewriteService {
     struct RewriteResult {
         let text: String
         let trustScore: TrustScore?
-        let evidence: GenerationEvidence?
+        let evidence: APIGenerationEvidence?
     }
     
     private var currentContext: GenerationContext = .default
@@ -151,7 +151,7 @@ actor RewriteService {
         }
         
         let evidence = decoded.data?.evidence.map { response in
-            GenerationEvidence(
+            APIGenerationEvidence(
                 avoidWordsMatched: response.avoidWordsMatched ?? [],
                 preferredWordsUsed: response.preferredWordsUsed ?? [],
                 autoFixRulesCount: response.autoFixRulesCount ?? 0,
@@ -222,7 +222,7 @@ struct TrustScoreBreakdown: Codable {
     }
 }
 
-struct GenerationEvidence: Codable {
+struct APIGenerationEvidence: Codable {
     let avoidWordsMatched: [String]
     let preferredWordsUsed: [String]
     let autoFixRulesCount: Int

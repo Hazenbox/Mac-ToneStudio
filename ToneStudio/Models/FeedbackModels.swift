@@ -70,9 +70,10 @@ struct Correction: Codable, Identifiable {
     let context: String?
     let createdAt: Date
     var appliedCount: Int
+    var synced: Bool
     
     init(id: UUID = UUID(), originalText: String, correctedText: String,
-         category: CorrectionCategory, context: String? = nil) {
+         category: CorrectionCategory, context: String? = nil, synced: Bool = false) {
         self.id = id
         self.originalText = originalText
         self.correctedText = correctedText
@@ -80,6 +81,19 @@ struct Correction: Codable, Identifiable {
         self.context = context
         self.createdAt = Date()
         self.appliedCount = 0
+        self.synced = synced
+    }
+    
+    func toDictionary() -> [String: Any] {
+        [
+            "id": id.uuidString,
+            "originalText": originalText,
+            "correctedText": correctedText,
+            "category": category.rawValue,
+            "context": context ?? "",
+            "createdAt": ISO8601DateFormatter().string(from: createdAt),
+            "appliedCount": appliedCount
+        ]
     }
 }
 

@@ -20,4 +20,7 @@ nonisolated extension Logger {
     static let learning = Logger(subsystem: subsystem, category: "learning")
     static let cache = Logger(subsystem: subsystem, category: "cache")
     static let intent = Logger(subsystem: subsystem, category: "intent")
+    static let sync = Logger(subsystem: subsystem, category: "sync")
+    static let evidence = Logger(subsystem: subsystem, category: "evidence")
+    static let emotion = Logger(subsystem: subsystem, category: "emotion")
 }

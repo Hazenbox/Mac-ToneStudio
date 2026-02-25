@@ -98,6 +98,20 @@ actor LearningService {
         Logger.learning.info("Syncing corrections with server...")
     }
     
+    func getPendingCorrections() -> [Correction] {
+        corrections.filter { !$0.synced }
+    }
+    
+    func markCorrectionsSynced(_ synced: [Correction]) {
+        for syncedCorrection in synced {
+            if let index = corrections.firstIndex(where: { $0.id == syncedCorrection.id }) {
+                corrections[index].synced = true
+            }
+        }
+        saveCorrections()
+        Logger.learning.info("Marked \(synced.count) corrections as synced")
+    }
+    
     func clearAllCorrections() {
         corrections = []
         preferredPatterns = [:]

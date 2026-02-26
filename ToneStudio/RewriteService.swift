@@ -68,12 +68,12 @@ actor RewriteService {
         currentContext = context
     }
     
-    func rewrite(text: String, prompt: String? = nil) async throws -> String {
-        let result = try await rewriteWithContext(text: text, prompt: prompt)
+    func rewrite(text: String, prompt: String? = nil, isChat: Bool = false) async throws -> String {
+        let result = try await rewriteWithContext(text: text, prompt: prompt, isChat: isChat)
         return result.text
     }
     
-    func rewriteWithContext(text: String, prompt: String? = nil, context: GenerationContext? = nil) async throws -> RewriteResult {
+    func rewriteWithContext(text: String, prompt: String? = nil, context: GenerationContext? = nil, isChat: Bool = false) async throws -> RewriteResult {
         let apiKey = KeychainHelper.load() ?? ""
         let ctx = context ?? currentContext
 
@@ -87,6 +87,7 @@ actor RewriteService {
 
         var body: [String: Any] = [
             "text": text,
+            "isChat": isChat,
             "ecosystem": ctx.ecosystem.rawValue,
             "channel": ctx.channel.rawValue,
             "warmth": ctx.warmth,

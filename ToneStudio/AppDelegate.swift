@@ -19,6 +19,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastSelectionRect: CGRect = .zero
     private var currentTask: Task<Void, Never>?
     private var lastTooltipPrompt: String = ""
+    
+    private enum LastChatAction {
+        case rephrase
+        case customPrompt(String)
+        case regenerate
+    }
+    private var lastChatAction: LastChatAction = .rephrase
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let isTrusted = AXIsProcessTrusted()
@@ -221,7 +228,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         tooltipWindow.onRetry = { [weak self] in
-            self?.performRephraseInChat()
+            guard let self else { return }
+            switch self.lastChatAction {
+            case .rephrase:
+                self.performRephraseInChat()
+            case .customPrompt(let prompt):
+                self.performCustomPromptInChat(prompt)
+            case .regenerate:
+                self.performRegenerateInChat()
+            }
         }
         
         tooltipWindow.onCustomPrompt = { [weak self] prompt in
@@ -248,12 +263,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func performRephraseInChat() {
         currentTask?.cancel()
         lastTooltipPrompt = ""
+        lastChatAction = .rephrase
+        
+        let text = selectedText
+        guard !text.isEmpty else {
+            tooltipWindow.appendMessage(ChatMessage(
+                role: .assistant,
+                content: "Select some text first, then I can rephrase it for you."
+            ))
+            tooltipWindow.updateUI(.chatWindow)
+            tooltipWindow.enableInput()
+            return
+        }
         
         tooltipWindow.setLastAction("Rephrase with Jio Voice and Tone")
         tooltipWindow.showInlineLoading()
         tooltipWindow.updateUI(.chatLoading)
 
-        let text = selectedText
         currentTask = Task {
             do {
                 let result = try await rewriteService.rewrite(text: text)
@@ -276,23 +302,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func performCustomPromptInChat(_ prompt: String) {
         currentTask?.cancel()
         lastTooltipPrompt = prompt
+        lastChatAction = .customPrompt(prompt)
         
         tooltipWindow.appendMessage(ChatMessage(role: .user, content: prompt))
-        
-        // Check if there's selected text to work with
-        let text = selectedText
-        if text.isEmpty {
-            tooltipWindow.appendMessage(ChatMessage(role: .assistant, content: "Please select some text first, then I can help you rewrite or improve it."))
-            tooltipWindow.updateUI(.chatWindow)
-            return
-        }
-        
         tooltipWindow.showInlineLoading()
         tooltipWindow.updateUI(.chatLoading)
 
+        let hasContext = !selectedText.isEmpty
+        let textToSend = hasContext ? selectedText : prompt
+        let safeText = textToSend.count < 3
+            ? textToSend + String(repeating: " ", count: 3 - textToSend.count)
+            : textToSend
+
         currentTask = Task {
             do {
-                let result = try await rewriteService.rewrite(text: text, prompt: prompt)
+                let result = try await rewriteService.rewrite(
+                    text: safeText, prompt: prompt, isChat: true
+                )
                 guard !Task.isCancelled else { return }
                 tooltipWindow.hideInlineLoading()
                 tooltipWindow.appendMessage(ChatMessage(role: .assistant, content: result))
@@ -312,20 +338,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     
     private func performRegenerateInChat() {
         currentTask?.cancel()
+        lastChatAction = .regenerate
         
         tooltipWindow.showInlineLoading()
         tooltipWindow.updateUI(.chatLoading)
 
-        let text = selectedText
         let prompt = lastTooltipPrompt
+        let hasContext = !selectedText.isEmpty
+        let textToSend = hasContext ? selectedText : prompt
+        let safeText = textToSend.count < 3
+            ? textToSend + String(repeating: " ", count: 3 - textToSend.count)
+            : textToSend
+        let useChat = !prompt.isEmpty
         
         currentTask = Task {
             do {
                 let result: String
                 if prompt.isEmpty {
-                    result = try await rewriteService.rewrite(text: text)
+                    result = try await rewriteService.rewrite(text: safeText)
                 } else {
-                    result = try await rewriteService.rewrite(text: text, prompt: prompt)
+                    result = try await rewriteService.rewrite(
+                        text: safeText, prompt: prompt, isChat: useChat
+                    )
                 }
                 guard !Task.isCancelled else { return }
                 tooltipWindow.hideInlineLoading()
@@ -377,6 +411,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 selectedText = text
                 tooltipWindow.showCentered(withText: text)
             } else {
+                selectedText = ""
                 tooltipWindow.showCentered(withText: nil)
             }
             setupTooltipCallbacks()

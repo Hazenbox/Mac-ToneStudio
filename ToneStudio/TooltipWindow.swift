@@ -1153,13 +1153,15 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         let buttonWidth: CGFloat = width - padding * 2
         let buttonSpacing: CGFloat = 8
         
-        // Validate button at bottom (now enabled)
+        let hasText = !selectedText.isEmpty
+        
+        // Validate button at bottom
         let validateY: CGFloat = padding + 4
         let validateBtn = makeOptionButton(
             title: "Validate current compliance",
             frame: NSRect(x: padding, y: validateY, width: buttonWidth, height: buttonH),
             action: #selector(validateOptionTapped),
-            enabled: true
+            enabled: hasText
         )
         containerView.addSubview(validateBtn)
         
@@ -1171,9 +1173,11 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         validateBtn.addSubview(badgeView)
         validationBadgeView = badgeView
         
-        // Start async validation check
-        Task { [weak self] in
-            await self?.runPreValidation()
+        // Start async validation check only if text exists
+        if hasText {
+            Task { [weak self] in
+                await self?.runPreValidation()
+            }
         }
         
         // Rephrase button above validate
@@ -1182,7 +1186,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             title: "Rephrase with Jio Voice and Tone",
             frame: NSRect(x: padding, y: rephraseY, width: buttonWidth, height: buttonH),
             action: #selector(rephraseOptionTapped),
-            enabled: true
+            enabled: hasText
         )
         containerView.addSubview(rephraseBtn)
         
@@ -1192,7 +1196,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             title: "Quick Fix",
             frame: NSRect(x: padding, y: quickFixY, width: buttonWidth, height: buttonH),
             action: #selector(quickFixOptionTapped),
-            enabled: true
+            enabled: hasText
         )
         containerView.addSubview(quickFixBtn)
         
@@ -1204,18 +1208,20 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         quickFixBadge.isHidden = true
         quickFixBtn.addSubview(quickFixBadge)
         
-        // Start async auto-fix count
-        Task { [weak self] in
-            guard let self = self else { return }
-            let count = await AutoFixService.shared.getFixCount(for: self.selectedText)
-            await MainActor.run {
-                if count > 0 {
-                    quickFixBadge.isHidden = false
-                    quickFixBadge.subviews.forEach { $0.removeFromSuperview() }
-                    let countLabel = self.makeLabel("\(count)", size: 11, weight: .semibold, color: .white)
-                    countLabel.alignment = .center
-                    countLabel.frame = NSRect(x: 0, y: 2, width: 40, height: 16)
-                    quickFixBadge.addSubview(countLabel)
+        // Start async auto-fix count only if text exists
+        if hasText {
+            Task { [weak self] in
+                guard let self = self else { return }
+                let count = await AutoFixService.shared.getFixCount(for: self.selectedText)
+                await MainActor.run {
+                    if count > 0 {
+                        quickFixBadge.isHidden = false
+                        quickFixBadge.subviews.forEach { $0.removeFromSuperview() }
+                        let countLabel = self.makeLabel("\(count)", size: 11, weight: .semibold, color: .white)
+                        countLabel.alignment = .center
+                        countLabel.frame = NSRect(x: 0, y: 2, width: 40, height: 16)
+                        quickFixBadge.addSubview(countLabel)
+                    }
                 }
             }
         }
@@ -1229,49 +1235,50 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         inputPanel.layer?.cornerRadius = Self.innerCornerRadius
         containerView.addSubview(inputPanel)
         
-        // Layout with consistent 10px padding for a tighter, balanced look
-        // 1. Selected text container at TOP of input panel
-        let selectedRowH: CGFloat = 32
-        let selectedRowY = inputPanelH - 10 - selectedRowH  // 10px from top
-        let selectedRowContainer = NSView(frame: NSRect(x: 10, y: selectedRowY, width: buttonWidth - 20, height: selectedRowH))
-        selectedRowContainer.wantsLayer = true
-        selectedRowContainer.layer?.backgroundColor = Self.buttonBG.cgColor
-        selectedRowContainer.layer?.cornerRadius = 8
-        inputPanel.addSubview(selectedRowContainer)
-        
-        // Document icon inside container
-        let docIcon = NSImageView(frame: NSRect(x: 8, y: (selectedRowH - 16) / 2, width: 16, height: 16))
-        let docConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
-        docIcon.image = NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)?.withSymbolConfiguration(docConfig)
-        docIcon.contentTintColor = Self.primaryText
-        selectedRowContainer.addSubview(docIcon)
-        
-        // Selected text label inside container (reduced width for close button)
-        let truncatedText = selectedText.count > 25 ? String(selectedText.prefix(25)) + "..." : selectedText
-        let selectedLabel = makeLabel("Selected text: \(truncatedText)", size: 12, weight: .regular, color: Self.primaryText)
-        selectedLabel.frame = NSRect(x: 28, y: (selectedRowH - 16) / 2, width: buttonWidth - 68, height: 16)
-        selectedRowContainer.addSubview(selectedLabel)
-        
-        // Close button to discard selected text
-        let clearSelectedBtn = NSButton(frame: NSRect(
-            x: buttonWidth - 20 - 8 - 16,
-            y: (selectedRowH - 16) / 2,
-            width: 16,
-            height: 16
-        ))
-        let closeConfig = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
-        clearSelectedBtn.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Clear selected text")?
-            .withSymbolConfiguration(closeConfig)
-        clearSelectedBtn.isBordered = false
-        clearSelectedBtn.bezelStyle = .inline
-        clearSelectedBtn.contentTintColor = Self.secondaryText
-        clearSelectedBtn.target = self
-        clearSelectedBtn.action = #selector(clearSelectedTextTapped)
-        selectedRowContainer.addSubview(clearSelectedBtn)
-        
-        // 2. Input field positioned below selected text with 10px gap
         let textFieldH: CGFloat = 24
-        let textFieldY = selectedRowY - 10 - textFieldH  // 10px below selected text
+        var textFieldY: CGFloat
+        
+        if hasText {
+            // Selected text container at TOP of input panel
+            let selectedRowH: CGFloat = 32
+            let selectedRowY = inputPanelH - 10 - selectedRowH
+            let selectedRowContainer = NSView(frame: NSRect(x: 10, y: selectedRowY, width: buttonWidth - 20, height: selectedRowH))
+            selectedRowContainer.wantsLayer = true
+            selectedRowContainer.layer?.backgroundColor = Self.buttonBG.cgColor
+            selectedRowContainer.layer?.cornerRadius = 8
+            inputPanel.addSubview(selectedRowContainer)
+            
+            let docIcon = NSImageView(frame: NSRect(x: 8, y: (selectedRowH - 16) / 2, width: 16, height: 16))
+            let docConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
+            docIcon.image = NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)?.withSymbolConfiguration(docConfig)
+            docIcon.contentTintColor = Self.primaryText
+            selectedRowContainer.addSubview(docIcon)
+            
+            let truncatedText = selectedText.count > 25 ? String(selectedText.prefix(25)) + "..." : selectedText
+            let selectedLabel = makeLabel("Selected text: \(truncatedText)", size: 12, weight: .regular, color: Self.primaryText)
+            selectedLabel.frame = NSRect(x: 28, y: (selectedRowH - 16) / 2, width: buttonWidth - 68, height: 16)
+            selectedRowContainer.addSubview(selectedLabel)
+            
+            let clearSelectedBtn = NSButton(frame: NSRect(
+                x: buttonWidth - 20 - 8 - 16,
+                y: (selectedRowH - 16) / 2,
+                width: 16,
+                height: 16
+            ))
+            let closeConfig = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
+            clearSelectedBtn.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Clear selected text")?
+                .withSymbolConfiguration(closeConfig)
+            clearSelectedBtn.isBordered = false
+            clearSelectedBtn.bezelStyle = .inline
+            clearSelectedBtn.contentTintColor = Self.secondaryText
+            clearSelectedBtn.target = self
+            clearSelectedBtn.action = #selector(clearSelectedTextTapped)
+            selectedRowContainer.addSubview(clearSelectedBtn)
+            
+            textFieldY = selectedRowY - 10 - textFieldH
+        } else {
+            textFieldY = inputPanelH - 10 - textFieldH
+        }
         
         let textField = NSTextField(frame: NSRect(
             x: 10,
@@ -1279,9 +1286,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             width: buttonWidth - 20,
             height: textFieldH
         ))
-        textField.placeholderString = "Ask anything about selected text"
+        let optionsPlaceholder = hasText ? "Ask anything about selected text" : "Ask me anything..."
+        textField.placeholderString = optionsPlaceholder
         textField.placeholderAttributedString = NSAttributedString(
-            string: "Ask anything about selected text",
+            string: optionsPlaceholder,
             attributes: [
                 .foregroundColor: Self.secondaryText,
                 .font: NSFont.systemFont(ofSize: 12)
@@ -1434,9 +1442,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             width: width - Self.contentPadding * 2 - 24 - sendBtnSize - 8,
             height: textFieldH
         ))
-        textField.placeholderString = "Ask anything about selected text"
+        let chatPlaceholder = selectedText.isEmpty ? "Ask me anything..." : "Ask anything about selected text"
+        textField.placeholderString = chatPlaceholder
         textField.placeholderAttributedString = NSAttributedString(
-            string: "Ask anything about selected text",
+            string: chatPlaceholder,
             attributes: [
                 .foregroundColor: NSColor.white.withAlphaComponent(0.5),
                 .font: NSFont.systemFont(ofSize: Self.inputFontSize)
@@ -1538,6 +1547,19 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         // STEP 2: Position elements from TOP (high y) to BOTTOM (low y)
         // In AppKit, y=0 is at the bottom, so we start from contentHeight and work downward
         var yPos: CGFloat = contentHeight - 8  // Start from top with padding
+        
+        // Empty state welcome message
+        if conversationMessages.isEmpty && selectedText.isEmpty && lastAction.isEmpty && !isLoadingInline {
+            let welcomeLabel = makeLabel(
+                "ask me anything — questions, content help,\nor select text to get started",
+                size: 13, weight: .regular, color: Self.secondaryText
+            )
+            welcomeLabel.alignment = .center
+            welcomeLabel.maximumNumberOfLines = 2
+            welcomeLabel.frame = NSRect(x: padding, y: (contentHeight - 40) / 2, width: width - padding * 2, height: 40)
+            contentView.addSubview(welcomeLabel)
+            return
+        }
         
         // Selected text in dark container at TOP
         if !selectedText.isEmpty {
@@ -1955,10 +1977,13 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         containerView.addSubview(msgLabel)
 
         let retryBtn  = makeTextButton("Retry",  action: #selector(retryTapped))
+        let backBtn   = makeTextButton("Back",   action: #selector(backToChatTapped))
         let cancelBtn = makeTextButton("Dismiss", action: #selector(cancelTapped))
-        retryBtn.frame  = NSRect(x: padding, y: 10, width: 70, height: 26)
-        cancelBtn.frame = NSRect(x: padding + 76, y: 10, width: 70, height: 26)
+        retryBtn.frame  = NSRect(x: padding, y: 10, width: 60, height: 26)
+        backBtn.frame   = NSRect(x: padding + 66, y: 10, width: 55, height: 26)
+        cancelBtn.frame = NSRect(x: padding + 127, y: 10, width: 70, height: 26)
         containerView.addSubview(retryBtn)
+        containerView.addSubview(backBtn)
         containerView.addSubview(cancelBtn)
     }
 
@@ -2259,6 +2284,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     }
     
     private func runPreValidation() async {
+        guard !selectedText.isEmpty else { return }
         let (errors, warnings) = await ValidationService.shared.validateQuick(selectedText)
         let totalIssues = errors + warnings
         
@@ -2296,7 +2322,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     
     @objc private func clearSelectedTextTapped() {
         selectedText = ""
-        clearConversation()
         updateUI(currentState)
     }
     
@@ -2423,6 +2448,16 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     
     @objc private func retryTapped() {
         onRetry?()
+    }
+    
+    @objc private func backToChatTapped() {
+        let height = calculateChatWindowHeight()
+        let size = NSSize(width: Self.chatWindowWidth, height: height)
+        buildChatWindowUI(size: size)
+        currentState = .chatWindow
+        resizeAndReanchor(to: size)
+        enableInput()
+        focusInputField()
     }
     
     @objc private func regenerateTapped() {

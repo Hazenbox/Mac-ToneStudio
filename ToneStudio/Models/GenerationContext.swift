@@ -93,6 +93,9 @@ enum ContentChannelType: String, Codable, CaseIterable {
     // Editor (native app specific)
     case editor
     
+    // General chat (no specific content channel)
+    case chat
+    
     var displayName: String {
         switch self {
         case .pushNotification: return "push notification"
@@ -114,6 +117,7 @@ enum ContentChannelType: String, Codable, CaseIterable {
         case .internalAnnouncement: return "internal announcement"
         case .trainingModule: return "training module"
         case .editor: return "editor"
+        case .chat: return "chat"
         }
     }
     
@@ -138,6 +142,7 @@ enum ContentChannelType: String, Codable, CaseIterable {
         case .internalAnnouncement: return 6
         case .trainingModule: return 8
         case .editor: return 7
+        case .chat: return 8
         }
     }
     
@@ -162,6 +167,7 @@ enum ContentChannelType: String, Codable, CaseIterable {
         case .internalAnnouncement: return 6
         case .trainingModule: return 7
         case .editor: return 5
+        case .chat: return 5
         }
     }
     
@@ -186,6 +192,7 @@ enum ContentChannelType: String, Codable, CaseIterable {
         case .internalAnnouncement: return "150-250 words"
         case .trainingModule: return "varies by content"
         case .editor: return "as needed"
+        case .chat: return "as needed"
         }
     }
 }

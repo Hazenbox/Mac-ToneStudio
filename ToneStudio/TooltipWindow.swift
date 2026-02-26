@@ -548,6 +548,13 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         isLoadingInline = false
     }
     
+    func getConversationHistory(limit: Int = 10) -> [[String: String]] {
+        conversationMessages
+            .filter { $0.role == .user || $0.role == .assistant }
+            .suffix(limit)
+            .map { ["role": $0.role == .user ? "user" : "assistant", "content": $0.content] }
+    }
+    
     func showInlineLoading() {
         isLoadingInline = true
         rebuildChatContent()

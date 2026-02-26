@@ -26,6 +26,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case regenerate
     }
     private var lastChatAction: LastChatAction = .rephrase
+    private var isRetryInProgress = false
+    
+    // MARK: - Preflight
+    
+    private enum PreflightResult {
+        case proceed(GenerationContext?)
+        case localResponse(String)
+    }
+    
+    private func preflight(_ text: String) async -> PreflightResult {
+        let safetyResult = await SafetyGateService.shared.classify(text)
+        
+        switch safetyResult.routing {
+        case .proceedNormal:
+            return .proceed(nil)
+            
+        case .proceedWithDisclaimer, .proceedModified:
+            var ctx = GenerationContext.default
+            ctx.channel = .chat
+            if let maxW = safetyResult.modifications.maxWarmth {
+                ctx.warmth = min(ctx.warmth, maxW)
+            }
+            if let tone = safetyResult.modifications.toneLock {
+                ctx.persona = tone
+            }
+            return .proceed(ctx)
+            
+        case .emergencyResponse:
+            if let info = safetyResult.modifications.emergencyInfo {
+                return .localResponse(buildEmergencyMessage(info))
+            }
+            return .localResponse(buildGenericBlockMessage())
+            
+        case .blockAndLog:
+            return .localResponse(buildGenericBlockMessage())
+        }
+    }
+    
+    private func buildEmergencyMessage(_ info: EmergencyInfo) -> String {
+        var lines = [info.immediateMessage, ""]
+        for helpline in info.helplines {
+            let availability = helpline.available24x7 ? "(24/7)" : ""
+            lines.append("\(helpline.name): \(helpline.number) \(availability)")
+        }
+        return lines.joined(separator: "\n")
+    }
+    
+    private func buildGenericBlockMessage() -> String {
+        "i can't help with that topic, but if you need immediate assistance, please call 112 (emergency services)."
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let isTrusted = AXIsProcessTrusted()
@@ -229,6 +279,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         tooltipWindow.onRetry = { [weak self] in
             guard let self else { return }
+            self.isRetryInProgress = true
             switch self.lastChatAction {
             case .rephrase:
                 self.performRephraseInChat()
@@ -304,7 +355,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lastTooltipPrompt = prompt
         lastChatAction = .customPrompt(prompt)
         
-        tooltipWindow.appendMessage(ChatMessage(role: .user, content: prompt))
+        if !isRetryInProgress {
+            tooltipWindow.appendMessage(ChatMessage(role: .user, content: prompt))
+        }
+        isRetryInProgress = false
+        
         tooltipWindow.showInlineLoading()
         tooltipWindow.updateUI(.chatLoading)
 
@@ -313,25 +368,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let safeText = textToSend.count < 3
             ? textToSend + String(repeating: " ", count: 3 - textToSend.count)
             : textToSend
+        let history = tooltipWindow.getConversationHistory()
 
         currentTask = Task {
-            do {
-                let result = try await rewriteService.rewrite(
-                    text: safeText, prompt: prompt, isChat: true
-                )
-                guard !Task.isCancelled else { return }
+            let preflightResult = await preflight(prompt)
+            guard !Task.isCancelled else { return }
+            
+            switch preflightResult {
+            case .localResponse(let message):
                 tooltipWindow.hideInlineLoading()
-                tooltipWindow.appendMessage(ChatMessage(role: .assistant, content: result))
+                tooltipWindow.appendMessage(ChatMessage(role: .assistant, content: message))
                 tooltipWindow.updateUI(.chatWindow)
                 tooltipWindow.enableInput()
-            } catch is CancellationError {
-                // User cancelled
-            } catch {
-                guard !Task.isCancelled else { return }
-                tooltipWindow.hideInlineLoading()
-                let message = (error as? RewriteService.RewriteError)?.errorDescription ?? error.localizedDescription
-                tooltipWindow.updateUI(.error(message))
-                tooltipWindow.enableInput()
+                return
+                
+            case .proceed(let safetyContext):
+                do {
+                    let result = try await rewriteService.rewrite(
+                        text: safeText, prompt: prompt, isChat: true,
+                        context: safetyContext,
+                        conversationHistory: history
+                    )
+                    guard !Task.isCancelled else { return }
+                    tooltipWindow.hideInlineLoading()
+                    tooltipWindow.appendMessage(ChatMessage(role: .assistant, content: result))
+                    tooltipWindow.updateUI(.chatWindow)
+                    tooltipWindow.enableInput()
+                } catch is CancellationError {
+                    // User cancelled
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    tooltipWindow.hideInlineLoading()
+                    let message = (error as? RewriteService.RewriteError)?.errorDescription ?? error.localizedDescription
+                    tooltipWindow.updateUI(.error(message))
+                    tooltipWindow.enableInput()
+                }
             }
         }
     }
@@ -350,30 +421,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ? textToSend + String(repeating: " ", count: 3 - textToSend.count)
             : textToSend
         let useChat = !prompt.isEmpty
+        let history = tooltipWindow.getConversationHistory()
         
         currentTask = Task {
-            do {
-                let result: String
-                if prompt.isEmpty {
-                    result = try await rewriteService.rewrite(text: safeText)
-                } else {
-                    result = try await rewriteService.rewrite(
-                        text: safeText, prompt: prompt, isChat: useChat
-                    )
+            if useChat {
+                let preflightResult = await preflight(prompt)
+                guard !Task.isCancelled else { return }
+                
+                var safetyContext: GenerationContext? = nil
+                switch preflightResult {
+                case .localResponse(let message):
+                    tooltipWindow.hideInlineLoading()
+                    tooltipWindow.appendMessage(ChatMessage(role: .assistant, content: message))
+                    tooltipWindow.updateUI(.chatWindow)
+                    tooltipWindow.enableInput()
+                    return
+                case .proceed(let ctx):
+                    safetyContext = ctx
                 }
-                guard !Task.isCancelled else { return }
-                tooltipWindow.hideInlineLoading()
-                tooltipWindow.appendMessage(ChatMessage(role: .assistant, content: result))
-                tooltipWindow.updateUI(.chatWindow)
-                tooltipWindow.enableInput()
-            } catch is CancellationError {
-                // User cancelled
-            } catch {
-                guard !Task.isCancelled else { return }
-                tooltipWindow.hideInlineLoading()
-                let message = (error as? RewriteService.RewriteError)?.errorDescription ?? error.localizedDescription
-                tooltipWindow.updateUI(.error(message))
-                tooltipWindow.enableInput()
+                
+                do {
+                    let result = try await rewriteService.rewrite(
+                        text: safeText, prompt: prompt, isChat: true,
+                        context: safetyContext,
+                        conversationHistory: history
+                    )
+                    guard !Task.isCancelled else { return }
+                    tooltipWindow.hideInlineLoading()
+                    tooltipWindow.appendMessage(ChatMessage(role: .assistant, content: result))
+                    tooltipWindow.updateUI(.chatWindow)
+                    tooltipWindow.enableInput()
+                } catch is CancellationError {
+                    // User cancelled
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    tooltipWindow.hideInlineLoading()
+                    let message = (error as? RewriteService.RewriteError)?.errorDescription ?? error.localizedDescription
+                    tooltipWindow.updateUI(.error(message))
+                    tooltipWindow.enableInput()
+                }
+            } else {
+                do {
+                    let result = try await rewriteService.rewrite(text: safeText)
+                    guard !Task.isCancelled else { return }
+                    tooltipWindow.hideInlineLoading()
+                    tooltipWindow.appendMessage(ChatMessage(role: .assistant, content: result))
+                    tooltipWindow.updateUI(.chatWindow)
+                    tooltipWindow.enableInput()
+                } catch is CancellationError {
+                    // User cancelled
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    tooltipWindow.hideInlineLoading()
+                    let message = (error as? RewriteService.RewriteError)?.errorDescription ?? error.localizedDescription
+                    tooltipWindow.updateUI(.error(message))
+                    tooltipWindow.enableInput()
+                }
             }
         }
     }

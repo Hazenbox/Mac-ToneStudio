@@ -68,12 +68,14 @@ actor RewriteService {
         currentContext = context
     }
     
-    func rewrite(text: String, prompt: String? = nil, isChat: Bool = false) async throws -> String {
-        let result = try await rewriteWithContext(text: text, prompt: prompt, isChat: isChat)
+    func rewrite(text: String, prompt: String? = nil, isChat: Bool = false,
+                  context: GenerationContext? = nil,
+                  conversationHistory: [[String: String]]? = nil) async throws -> String {
+        let result = try await rewriteWithContext(text: text, prompt: prompt, context: context, isChat: isChat, conversationHistory: conversationHistory)
         return result.text
     }
     
-    func rewriteWithContext(text: String, prompt: String? = nil, context: GenerationContext? = nil, isChat: Bool = false) async throws -> RewriteResult {
+    func rewriteWithContext(text: String, prompt: String? = nil, context: GenerationContext? = nil, isChat: Bool = false, conversationHistory: [[String: String]]? = nil) async throws -> RewriteResult {
         let apiKey = KeychainHelper.load() ?? ""
         let ctx = context ?? currentContext
 
@@ -101,6 +103,10 @@ actor RewriteService {
         
         if let prompt = prompt, !prompt.isEmpty {
             body["prompt"] = prompt
+        }
+        
+        if let history = conversationHistory, !history.isEmpty {
+            body["conversationHistory"] = history
         }
         
         request.httpBody = try JSONSerialization.data(withJSONObject: body)

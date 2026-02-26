@@ -10,6 +10,7 @@ enum TooltipState: Equatable {
     case chatWindow
     case chatLoading
     case floatingFAB
+    case compliancePanel
     case error(String)
     
     static func == (lhs: TooltipState, rhs: TooltipState) -> Bool {
@@ -19,7 +20,8 @@ enum TooltipState: Equatable {
              (.optionsMenu, .optionsMenu),
              (.chatWindow, .chatWindow),
              (.chatLoading, .chatLoading),
-             (.floatingFAB, .floatingFAB):
+             (.floatingFAB, .floatingFAB),
+             (.compliancePanel, .compliancePanel):
             return true
         case (.error(let a), .error(let b)):
             return a == b
@@ -406,6 +408,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     var onCustomPrompt: ((String) -> Void)?
     var onFeedback: ((String, String) -> Void)?
     var onRegenerate: (() -> Void)?
+    var onQuickFix: (() -> Void)?
 
     // MARK: - Panel
     private let panel: KeyablePanel
@@ -450,16 +453,32 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     private static let bubbleCorner: CGFloat = BubbleContainerView.cornerRadius
     
     private static let optionsMenuSize = NSSize(width: 335, height: 330)
-    private static let chatWindowWidth: CGFloat = 335
-    private static let chatWindowMinHeight: CGFloat = 428
-    private static let chatWindowMaxHeight: CGFloat = 500
+    private static let chatWindowWidth: CGFloat = 420
+    private static let chatWindowMinHeight: CGFloat = 480
+    private static let chatWindowMaxHeight: CGFloat = 600
+    private static let compliancePanelSize = NSSize(width: 360, height: 400)
     private static let errorWidth: CGFloat = 300
-    private static let cardCornerRadius: CGFloat = 15
+    private static let cardCornerRadius: CGFloat = 16
     private static let innerCornerRadius: CGFloat = 11
     private static let pillCornerRadius: CGFloat = 21
     private static let fabSize: CGFloat = 48
     private static let userBubbleMaxWidthRatio: CGFloat = 0.8
     private static let selectedTextContainerH: CGFloat = 42
+    
+    // User bubble styling constants
+    private static let userBubblePaddingH: CGFloat = 16
+    private static let userBubblePaddingV: CGFloat = 10
+    private static let userBubbleMinWidth: CGFloat = 72
+    private static let userBubbleMinTextWidth: CGFloat = 48
+    
+    // Typography constants
+    private static let messageFontSize: CGFloat = 14
+    private static let titleFontSize: CGFloat = 15
+    private static let inputFontSize: CGFloat = 14
+    
+    // Spacing constants
+    private static let contentPadding: CGFloat = 12
+    private static let messageSpacing: CGFloat = 16
 
     // MARK: - Colors (Figma specs)
     private static let darkBubbleBG  = NSColor(red: 0.17, green: 0.17, blue: 0.19, alpha: 1)
@@ -712,6 +731,8 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             buildChatWindowUI(size: size)
         case .floatingFAB:
             buildFloatingFABUI(size: size)
+        case .compliancePanel:
+            buildCompliancePanelUI(size: size)
         default:
             break
         }
@@ -835,7 +856,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
 
     var isInteracting: Bool {
         switch currentState {
-        case .chatWindow, .chatLoading, .error, .optionsMenu:
+        case .chatWindow, .chatLoading, .error, .optionsMenu, .compliancePanel:
             return true
         case .miniIcon, .noSelection, .floatingFAB:
             return false
@@ -904,6 +925,11 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             buildFloatingFABUI(size: size)
             // Animate the shrinking transition
             animateResizeAndReanchor(to: size)
+            
+        case .compliancePanel:
+            panel.isMovableByWindowBackground = true
+            buildCompliancePanelUI(size: Self.compliancePanelSize)
+            resizeAndReanchor(to: Self.compliancePanelSize)
         }
     }
     
@@ -940,24 +966,26 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     }
     
     private func calculateChatWindowHeight() -> CGFloat {
-        var contentHeight: CGFloat = 120
+        var contentHeight: CGFloat = 140  // Base height for header + input area
         
         if !selectedText.isEmpty {
-            contentHeight += estimateTextHeight(selectedText, width: Self.chatWindowWidth - 80, fontSize: 13) + 20
+            contentHeight += estimateTextHeight(selectedText, width: Self.chatWindowWidth - Self.contentPadding * 4, fontSize: Self.messageFontSize) + 24
         }
         
         if !lastAction.isEmpty {
-            contentHeight += 40
+            contentHeight += 48
         }
         
         for message in conversationMessages {
             if message.role == .assistant {
-                contentHeight += estimateTextHeight(message.content, width: Self.chatWindowWidth - 80, fontSize: 13) + 50
+                contentHeight += estimateTextHeight(message.content, width: Self.chatWindowWidth - Self.contentPadding * 4, fontSize: Self.messageFontSize) + 56
+            } else if message.role == .user {
+                contentHeight += 48  // Approximate user bubble height
             }
         }
         
         if isLoadingInline {
-            contentHeight += 40
+            contentHeight += 44
         }
         
         contentHeight += 60
@@ -1343,51 +1371,51 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         let width = size.width
         let height = size.height
         
-        // Card background - #252526, corner radius 15
+        // Card background
         let cardLayer = CALayer()
         cardLayer.frame = CGRect(origin: .zero, size: size)
         cardLayer.backgroundColor = Self.cardBG.cgColor
         cardLayer.cornerRadius = Self.cardCornerRadius
         containerView.layer?.addSublayer(cardLayer)
         
-        // Header: same as options menu - y=9 from top
-        let logoSize: CGFloat = 28
-        let headerY = height - 9 - logoSize
+        // Header with more breathing room
+        let logoSize: CGFloat = 32
+        let headerY = height - Self.contentPadding - logoSize
         
-        // Product logo: 28x28 at x:9
+        // Product logo
         let avatar = makeAvatarImageView(size: logoSize)
-        avatar.frame = NSRect(x: 9, y: headerY, width: logoSize, height: logoSize)
+        avatar.frame = NSRect(x: Self.contentPadding, y: headerY, width: logoSize, height: logoSize)
         containerView.addSubview(avatar)
         
-        // Title "Tone Studio": font-size:13, medium weight, 80% opacity
-        let titleLabel = makeLabel("Tone Studio", size: 13, weight: .medium, color: Self.titleText)
-        titleLabel.frame = NSRect(x: 9 + logoSize + 8, y: headerY + (logoSize - 16) / 2, width: 200, height: 16)
+        // Title with larger font
+        let titleLabel = makeLabel("Tone Studio", size: Self.titleFontSize, weight: .medium, color: Self.titleText)
+        titleLabel.frame = NSRect(x: Self.contentPadding + logoSize + 10, y: headerY + (logoSize - 18) / 2, width: 200, height: 18)
         containerView.addSubview(titleLabel)
         
-        // Close button (X): 16x16 at top-right
+        // Close button
         let closeBtn = makeCloseButton()
-        closeBtn.frame = NSRect(x: width - 16 - 14, y: headerY + (logoSize - 16) / 2, width: 16, height: 16)
+        closeBtn.frame = NSRect(x: width - 16 - Self.contentPadding, y: headerY + (logoSize - 16) / 2, width: 16, height: 16)
         containerView.addSubview(closeBtn)
         
-        // Input area at bottom: inset 7px from sides, height ~70px for 3 lines
-        let inputPanelH: CGFloat = 70
-        let inputPanelY: CGFloat = 7
-        let sendBtnSize: CGFloat = 28
+        // Input area at bottom with more padding
+        let inputPanelH: CGFloat = 80
+        let inputPanelY: CGFloat = Self.contentPadding
+        let sendBtnSize: CGFloat = 32
         
-        let inputBG = NSView(frame: NSRect(x: 7, y: inputPanelY, width: width - 14, height: inputPanelH))
+        let inputBG = NSView(frame: NSRect(x: Self.contentPadding, y: inputPanelY, width: width - Self.contentPadding * 2, height: inputPanelH))
         inputBG.wantsLayer = true
         inputBG.layer?.backgroundColor = Self.innerPanelBG.cgColor
         inputBG.layer?.cornerRadius = Self.innerCornerRadius
         containerView.addSubview(inputBG)
         
-        // Send button on the right side of input area (positioned at bottom)
+        // Send button
         let sendBtn = NSButton(frame: NSRect(
-            x: width - 7 - 8 - sendBtnSize,
-            y: inputPanelY + 8,
+            x: width - Self.contentPadding - 10 - sendBtnSize,
+            y: inputPanelY + 10,
             width: sendBtnSize,
             height: sendBtnSize
         ))
-        let sendConfig = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+        let sendConfig = NSImage.SymbolConfiguration(pointSize: 18, weight: .medium)
         sendBtn.image = NSImage(systemSymbolName: "arrow.up.circle.fill", accessibilityDescription: "Send")?
             .withSymbolConfiguration(sendConfig)
         sendBtn.isBordered = false
@@ -1398,27 +1426,27 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         sendBtn.isEnabled = !isLoadingInline
         containerView.addSubview(sendBtn)
         
-        // Add text field directly to containerView for proper focus handling (taller for 3 lines)
-        let textFieldH: CGFloat = 54
+        // Text field with larger font
+        let textFieldH: CGFloat = 60
         let textField = NSTextField(frame: NSRect(
-            x: 7 + 10,
-            y: inputPanelY + 8,
-            width: width - 14 - 20 - sendBtnSize - 4,
+            x: Self.contentPadding + 12,
+            y: inputPanelY + 10,
+            width: width - Self.contentPadding * 2 - 24 - sendBtnSize - 8,
             height: textFieldH
         ))
         textField.placeholderString = "Ask anything about selected text"
         textField.placeholderAttributedString = NSAttributedString(
             string: "Ask anything about selected text",
             attributes: [
-                .foregroundColor: Self.secondaryText,
-                .font: NSFont.systemFont(ofSize: 12)
+                .foregroundColor: NSColor.white.withAlphaComponent(0.5),
+                .font: NSFont.systemFont(ofSize: Self.inputFontSize)
             ]
         )
         textField.isBordered = false
         textField.drawsBackground = false
         textField.backgroundColor = .clear
         textField.textColor = Self.primaryText
-        textField.font = .systemFont(ofSize: 12)
+        textField.font = .systemFont(ofSize: Self.inputFontSize)
         textField.focusRingType = .none
         textField.delegate = self
         textField.isEnabled = !isLoadingInline
@@ -1426,8 +1454,8 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         inputField = textField
         
         // Content area between header and input
-        let contentTopY: CGFloat = inputPanelY + inputPanelH + 7  // 7px gap
-        let contentBottomY: CGFloat = height - 33  // 33px from top for header area
+        let contentTopY: CGFloat = inputPanelY + inputPanelH + Self.contentPadding
+        let contentBottomY: CGFloat = height - 44  // Header area
         let contentH = contentBottomY - contentTopY
         
         let scrollView = NSScrollView(frame: NSRect(x: 0, y: contentTopY, width: width, height: contentH))
@@ -1480,23 +1508,20 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         for message in conversationMessages {
             if message.role == .assistant {
                 let availableWidth = width - padding * 2
-                let textHeight = estimateTextHeight(message.content, width: availableWidth, fontSize: 12)
-                let messageH = textHeight + 8 + btnSize + 16  // text + gap + actions + bottom spacing
+                let textHeight = estimateTextHeight(message.content, width: availableWidth, fontSize: Self.messageFontSize)
+                let messageH = textHeight + 8 + btnSize + Self.messageSpacing  // text + gap + actions + bottom spacing
                 messageHeights.append((role: .assistant, content: message.content, height: messageH, textHeight: textHeight, bubbleW: 0))
                 totalHeight += messageH
             } else if message.role == .user {
                 // User messages as right-aligned pill bubbles
                 let maxBubbleWidth = (width - padding * 2) * Self.userBubbleMaxWidthRatio
-                let naturalWidth = estimateTextWidth(message.content, fontSize: 12)
-                let minTextWidth: CGFloat = 40  // Minimum width to prevent single-char wrapping
-                let textWidth = max(min(naturalWidth, maxBubbleWidth - 24), minTextWidth)
-                let textHeight = estimateTextHeight(message.content, width: textWidth, fontSize: 12)
-                let bubblePaddingH: CGFloat = 12
-                let bubblePaddingV: CGFloat = 9
-                let bubbleW = textWidth + bubblePaddingH * 2
-                let bubbleH = textHeight + bubblePaddingV * 2
-                messageHeights.append((role: .user, content: message.content, height: bubbleH + 12, textHeight: textHeight, bubbleW: bubbleW))
-                totalHeight += bubbleH + 12
+                let naturalWidth = estimateTextWidth(message.content, fontSize: Self.messageFontSize)
+                let textWidth = max(min(naturalWidth, maxBubbleWidth - Self.userBubblePaddingH * 2), Self.userBubbleMinTextWidth)
+                let textHeight = estimateTextHeight(message.content, width: textWidth, fontSize: Self.messageFontSize)
+                let bubbleW = max(textWidth + Self.userBubblePaddingH * 2, Self.userBubbleMinWidth)
+                let bubbleH = textHeight + Self.userBubblePaddingV * 2
+                messageHeights.append((role: .user, content: message.content, height: bubbleH + Self.messageSpacing, textHeight: textHeight, bubbleW: bubbleW))
+                totalHeight += bubbleH + Self.messageSpacing
             }
         }
         
@@ -1562,7 +1587,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         // Action pill (first user action) - RIGHT ALIGNED
         if !lastAction.isEmpty {
             let pillWidth = estimatePillWidth(lastAction)
-            let pillH: CGFloat = 36  // Increased height for better proportions
+            let pillH: CGFloat = 40  // Increased height for better proportions
             let pillX = width - padding - pillWidth  // Right-aligned
             yPos -= pillH
             
@@ -1572,11 +1597,11 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             pillBG.layer?.cornerRadius = pillH / 2  // Perfect pill shape (half height)
             contentView.addSubview(pillBG)
             
-            let pillLabel = makeLabel(lastAction, size: 12, weight: .regular, color: Self.primaryText)
-            pillLabel.frame = NSRect(x: 14, y: (pillH - 14) / 2, width: pillWidth - 28, height: 14)
+            let pillLabel = makeLabel(lastAction, size: Self.messageFontSize, weight: .regular, color: Self.primaryText)
+            pillLabel.frame = NSRect(x: Self.userBubblePaddingH, y: (pillH - 16) / 2, width: pillWidth - Self.userBubblePaddingH * 2, height: 16)
             pillBG.addSubview(pillLabel)
             
-            yPos -= 12  // Gap below action pill
+            yPos -= Self.messageSpacing  // Gap below action pill
         }
         
         // Conversation messages in chronological order (oldest first, newest at bottom)
@@ -1592,7 +1617,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
                 
                 // AI response text (no avatar)
                 let responseLabel = NSTextField(wrappingLabelWithString: message.content)
-                responseLabel.font = .systemFont(ofSize: 12)
+                responseLabel.font = .systemFont(ofSize: Self.messageFontSize)
                 responseLabel.textColor = Self.primaryText
                 responseLabel.isBezeled = false
                 responseLabel.drawsBackground = false
@@ -1626,15 +1651,13 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
                 dislikeBtn.frame = NSRect(x: btnX, y: yPos, width: btnSize, height: btnSize)
                 contentView.addSubview(dislikeBtn)
                 
-                yPos -= 16  // Bottom spacing for this message block
+                yPos -= Self.messageSpacing  // Bottom spacing for this message block
                 
             } else if msgData.role == .user {
                 // User messages as right-aligned pill bubbles
-                let bubblePaddingH: CGFloat = 12
-                let bubblePaddingV: CGFloat = 9
                 let textHeight = msgData.textHeight
                 let bubbleW = msgData.bubbleW
-                let bubbleH = textHeight + bubblePaddingV * 2
+                let bubbleH = textHeight + Self.userBubblePaddingV * 2
                 let bubbleX = width - padding - bubbleW  // Right-aligned
                 
                 yPos -= bubbleH
@@ -1643,14 +1666,15 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
                 let bubbleBG = NSView(frame: NSRect(x: bubbleX, y: yPos, width: bubbleW, height: bubbleH))
                 bubbleBG.wantsLayer = true
                 bubbleBG.layer?.backgroundColor = Self.actionPillBG.cgColor
-                let isSingleLine = bubbleH <= 40
+                // Use pill shape (half height radius) for single-line text, rounded corners for multi-line
+                let isSingleLine = textHeight <= 22  // Approximate single line at 14pt font
                 bubbleBG.layer?.cornerRadius = isSingleLine ? bubbleH / 2 : 16
                 contentView.addSubview(bubbleBG)
                 
-                // User message text inside bubble
-                let labelWidth = bubbleW - bubblePaddingH * 2
+                // User message text inside bubble - centered vertically
+                let labelWidth = bubbleW - Self.userBubblePaddingH * 2
                 let userLabel = NSTextField(wrappingLabelWithString: message.content)
-                userLabel.font = .systemFont(ofSize: 12)
+                userLabel.font = .systemFont(ofSize: Self.messageFontSize)
                 userLabel.textColor = Self.primaryText
                 userLabel.isBezeled = false
                 userLabel.drawsBackground = false
@@ -1659,10 +1683,12 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
                 userLabel.lineBreakMode = .byWordWrapping
                 userLabel.cell?.wraps = true
                 userLabel.cell?.isScrollable = false
-                userLabel.frame = NSRect(x: bubblePaddingH, y: bubblePaddingV, width: labelWidth, height: textHeight)
+                // Center text vertically within bubble
+                let textY = (bubbleH - textHeight) / 2
+                userLabel.frame = NSRect(x: Self.userBubblePaddingH, y: textY, width: labelWidth, height: textHeight)
                 bubbleBG.addSubview(userLabel)
                 
-                yPos -= 12  // Gap below user bubble
+                yPos -= Self.messageSpacing  // Gap below user bubble
             }
         }
         
@@ -1699,15 +1725,207 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     }
     
     private func estimatePillWidth(_ text: String) -> CGFloat {
-        let attr = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium)])
-        let rect = attr.boundingRect(with: NSSize(width: CGFloat.greatestFiniteMagnitude, height: 20), options: [.usesLineFragmentOrigin])
-        return ceil(rect.width) + 32  // Increased padding for better pill proportions
+        let attr = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: Self.messageFontSize, weight: .medium)])
+        let rect = attr.boundingRect(with: NSSize(width: CGFloat.greatestFiniteMagnitude, height: 24), options: [.usesLineFragmentOrigin])
+        return ceil(rect.width) + Self.userBubblePaddingH * 2 + 8  // Padding for pill shape
     }
     
     private func estimateTextWidth(_ text: String, fontSize: CGFloat) -> CGFloat {
         let attr = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: fontSize)])
         let rect = attr.boundingRect(with: NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude), options: [.usesLineFragmentOrigin])
         return ceil(rect.width)
+    }
+
+    // MARK: - Compliance Panel State
+    
+    private func buildCompliancePanelUI(size: NSSize) {
+        currentState = .compliancePanel
+        panel.allowsKeyStatus = false
+        clearContainer()
+        
+        let width = size.width
+        let height = size.height
+        let padding: CGFloat = 16
+        
+        // Card background
+        let cardLayer = CALayer()
+        cardLayer.frame = CGRect(origin: .zero, size: size)
+        cardLayer.backgroundColor = Self.cardBG.cgColor
+        cardLayer.cornerRadius = Self.cardCornerRadius
+        containerView.layer?.addSublayer(cardLayer)
+        
+        // Header
+        let logoSize: CGFloat = 28
+        let headerY = height - 12 - logoSize
+        
+        let avatar = makeAvatarImageView(size: logoSize)
+        avatar.frame = NSRect(x: padding, y: headerY, width: logoSize, height: logoSize)
+        containerView.addSubview(avatar)
+        
+        let titleLabel = makeLabel("compliance check", size: 14, weight: .medium, color: Self.titleText)
+        titleLabel.frame = NSRect(x: padding + logoSize + 10, y: headerY + (logoSize - 16) / 2, width: 200, height: 16)
+        containerView.addSubview(titleLabel)
+        
+        let closeBtn = makeCloseButton()
+        closeBtn.frame = NSRect(x: width - 16 - padding, y: headerY + (logoSize - 16) / 2, width: 16, height: 16)
+        containerView.addSubview(closeBtn)
+        
+        // Get validation result
+        guard let result = currentValidationResult else {
+            let noDataLabel = makeLabel("no validation data", size: 13, weight: .regular, color: Self.secondaryText)
+            noDataLabel.frame = NSRect(x: padding, y: height / 2, width: width - padding * 2, height: 20)
+            noDataLabel.alignment = .center
+            containerView.addSubview(noDataLabel)
+            return
+        }
+        
+        // Score section
+        let scoreY = headerY - 100
+        let scoreSize: CGFloat = 60
+        let scoreX = (width - scoreSize) / 2
+        
+        // Score circle
+        let scoreCircle = NSView(frame: NSRect(x: scoreX, y: scoreY + 30, width: scoreSize, height: scoreSize))
+        scoreCircle.wantsLayer = true
+        scoreCircle.layer?.cornerRadius = scoreSize / 2
+        scoreCircle.layer?.backgroundColor = colorForScore(result.score).cgColor
+        containerView.addSubview(scoreCircle)
+        
+        let scoreLabel = makeLabel("\(result.score)", size: 22, weight: .bold, color: .white)
+        scoreLabel.alignment = .center
+        scoreLabel.frame = NSRect(x: 0, y: (scoreSize - 26) / 2, width: scoreSize, height: 26)
+        scoreCircle.addSubview(scoreLabel)
+        
+        // Status text
+        let statusText = result.passed ? "passed" : "needs attention"
+        let statusColor = result.passed ? NSColor(red: 0.2, green: 0.78, blue: 0.35, alpha: 1) : NSColor(red: 1.0, green: 0.8, blue: 0.2, alpha: 1)
+        let statusLabel = makeLabel(statusText, size: 13, weight: .medium, color: statusColor)
+        statusLabel.alignment = .center
+        statusLabel.frame = NSRect(x: padding, y: scoreY + 6, width: width - padding * 2, height: 18)
+        containerView.addSubview(statusLabel)
+        
+        // Violations section
+        let violationsY = scoreY - 16
+        let violationsSectionHeight: CGFloat = 160
+        
+        if !result.violations.isEmpty {
+            let violationsContainer = NSScrollView(frame: NSRect(x: padding, y: violationsY - violationsSectionHeight, width: width - padding * 2, height: violationsSectionHeight))
+            violationsContainer.hasVerticalScroller = true
+            violationsContainer.hasHorizontalScroller = false
+            violationsContainer.borderType = .noBorder
+            violationsContainer.backgroundColor = .clear
+            violationsContainer.drawsBackground = false
+            violationsContainer.autohidesScrollers = true
+            
+            let rowHeight: CGFloat = 44
+            let contentHeight = CGFloat(result.violations.count) * rowHeight
+            let documentView = NSView(frame: NSRect(x: 0, y: 0, width: width - padding * 2, height: max(contentHeight, violationsSectionHeight)))
+            documentView.wantsLayer = true
+            
+            for (index, violation) in result.violations.enumerated() {
+                let rowY = documentView.bounds.height - CGFloat(index + 1) * rowHeight
+                buildViolationRow(in: documentView, at: rowY, violation: violation, width: width - padding * 2)
+            }
+            
+            violationsContainer.documentView = documentView
+            containerView.addSubview(violationsContainer)
+        } else {
+            let noIssuesLabel = makeLabel("no issues found", size: 13, weight: .regular, color: Self.secondaryText)
+            noIssuesLabel.alignment = .center
+            noIssuesLabel.frame = NSRect(x: padding, y: violationsY - 60, width: width - padding * 2, height: 20)
+            containerView.addSubview(noIssuesLabel)
+        }
+        
+        // Summary row at bottom
+        let summaryY: CGFloat = 56
+        let summaryHeight: CGFloat = 36
+        
+        let summaryBG = NSView(frame: NSRect(x: padding, y: summaryY, width: width - padding * 2, height: summaryHeight))
+        summaryBG.wantsLayer = true
+        summaryBG.layer?.backgroundColor = Self.innerPanelBG.cgColor
+        summaryBG.layer?.cornerRadius = 8
+        containerView.addSubview(summaryBG)
+        
+        let statWidth = (width - padding * 2) / 3
+        buildSummaryStatCompact(in: summaryBG, at: 0, value: result.errorCount, label: "errors", color: result.errorCount > 0 ? NSColor.systemRed : Self.secondaryText, width: statWidth)
+        buildSummaryStatCompact(in: summaryBG, at: statWidth, value: result.warningCount, label: "warnings", color: result.warningCount > 0 ? NSColor.systemOrange : Self.secondaryText, width: statWidth)
+        buildSummaryStatCompact(in: summaryBG, at: statWidth * 2, value: result.autoFixableCount, label: "fixable", color: result.autoFixableCount > 0 ? NSColor.systemGreen : Self.secondaryText, width: statWidth)
+        
+        // Quick Fix button (if applicable)
+        if result.autoFixableCount > 0 {
+            let btnY: CGFloat = 12
+            let btnHeight: CGFloat = 36
+            let btnWidth: CGFloat = width - padding * 2
+            
+            let fixBtn = NSButton(frame: NSRect(x: padding, y: btnY, width: btnWidth, height: btnHeight))
+            fixBtn.title = "quick fix (\(result.autoFixableCount))"
+            fixBtn.bezelStyle = .rounded
+            fixBtn.isBordered = true
+            fixBtn.wantsLayer = true
+            fixBtn.layer?.cornerRadius = btnHeight / 2
+            fixBtn.layer?.backgroundColor = NSColor.systemBlue.cgColor
+            fixBtn.contentTintColor = .white
+            fixBtn.target = self
+            fixBtn.action = #selector(quickFixTapped)
+            containerView.addSubview(fixBtn)
+        }
+    }
+    
+    private func buildViolationRow(in parent: NSView, at y: CGFloat, violation: Violation, width: CGFloat) {
+        let rowHeight: CGFloat = 40
+        let iconSize: CGFloat = 16
+        
+        let iconColor: NSColor
+        let iconName: String
+        
+        switch violation.severity {
+        case .error:
+            iconColor = NSColor.systemRed
+            iconName = "xmark.circle.fill"
+        case .warning:
+            iconColor = NSColor.systemOrange
+            iconName = "exclamationmark.triangle.fill"
+        case .info:
+            iconColor = NSColor.systemBlue
+            iconName = "info.circle.fill"
+        }
+        
+        let icon = NSImageView(frame: NSRect(x: 0, y: y + (rowHeight - iconSize) / 2, width: iconSize, height: iconSize))
+        icon.image = NSImage(systemSymbolName: iconName, accessibilityDescription: nil)
+        icon.contentTintColor = iconColor
+        parent.addSubview(icon)
+        
+        let textLabel = makeLabel("\"\(violation.text)\"", size: 12, weight: .medium, color: Self.primaryText)
+        textLabel.frame = NSRect(x: iconSize + 8, y: y + rowHeight / 2, width: width - iconSize - 8, height: 16)
+        textLabel.lineBreakMode = .byTruncatingTail
+        parent.addSubview(textLabel)
+        
+        let suggestionLabel = makeLabel(violation.suggestion, size: 10, weight: .regular, color: Self.secondaryText)
+        suggestionLabel.frame = NSRect(x: iconSize + 8, y: y + 4, width: width - iconSize - 8, height: 14)
+        suggestionLabel.lineBreakMode = .byTruncatingTail
+        parent.addSubview(suggestionLabel)
+    }
+    
+    private func buildSummaryStatCompact(in parent: NSView, at x: CGFloat, value: Int, label: String, color: NSColor, width: CGFloat) {
+        let valueLabel = makeLabel("\(value)", size: 14, weight: .bold, color: color)
+        valueLabel.alignment = .center
+        valueLabel.frame = NSRect(x: x, y: 16, width: width, height: 18)
+        parent.addSubview(valueLabel)
+        
+        let labelText = makeLabel(label, size: 10, weight: .regular, color: Self.secondaryText)
+        labelText.alignment = .center
+        labelText.frame = NSRect(x: x, y: 4, width: width, height: 12)
+        parent.addSubview(labelText)
+    }
+    
+    private func colorForScore(_ score: Int) -> NSColor {
+        if score >= 90 { return NSColor(red: 0.2, green: 0.78, blue: 0.35, alpha: 1) }  // Green
+        if score >= 70 { return NSColor(red: 1.0, green: 0.8, blue: 0.2, alpha: 1) }    // Yellow
+        return NSColor(red: 1.0, green: 0.4, blue: 0.3, alpha: 1)                        // Red
+    }
+    
+    @objc private func quickFixTapped() {
+        onQuickFix?()
     }
 
     // MARK: - Error State
@@ -1854,7 +2072,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self, self.panel.isVisible else { return }
             switch self.currentState {
-            case .chatWindow, .chatLoading, .error, .floatingFAB, .optionsMenu:
+            case .chatWindow, .chatLoading, .error, .floatingFAB, .optionsMenu, .compliancePanel:
                 // Don't dismiss on outside click for these states
                 break
             case .miniIcon, .noSelection:
@@ -1981,7 +2199,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             self.currentValidationResult = result
             
             await MainActor.run {
-                self.showValidationReport(result)
+                self.updateUI(.compliancePanel)
             }
         }
     }

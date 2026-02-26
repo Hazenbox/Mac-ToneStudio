@@ -409,6 +409,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     var onFeedback: ((String, String) -> Void)?
     var onRegenerate: (() -> Void)?
     var onQuickFix: (() -> Void)?
+    var onClearSelectedText: (() -> Void)?
 
     // MARK: - Panel
     private let panel: KeyablePanel
@@ -2329,6 +2330,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     
     @objc private func clearSelectedTextTapped() {
         selectedText = ""
+        onClearSelectedText?()
         updateUI(currentState)
     }
     

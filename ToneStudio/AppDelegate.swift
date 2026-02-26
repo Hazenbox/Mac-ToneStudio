@@ -301,12 +301,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         tooltipWindow.onFeedback = { [weak self] feedbackType, content in
             self?.submitTooltipFeedback(type: feedbackType, content: content)
         }
+        
+        tooltipWindow.onClearSelectedText = { [weak self] in
+            self?.selectedText = ""
+        }
     }
     
     private func cleanupTooltipState() {
         currentTask?.cancel()
         currentTask = nil
         tooltipWindow.hide()
+    }
+    
+    // MARK: - Conversational Message Detection
+    
+    private func isConversationalMessage(_ message: String) -> Bool {
+        let normalized = message.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Common acknowledgments and greetings
+        let conversationalStarters = [
+            "ok", "okay", "k", "got it", "thanks", "thank you", "thx", "ty",
+            "cool", "great", "nice", "perfect", "awesome", "good", "understood",
+            "noted", "hi", "hello", "hey", "sure", "yes", "no", "alright",
+            "sounds good", "that works", "looks good", "love it", "done"
+        ]
+        
+        // Check if message matches or starts with conversational word
+        for starter in conversationalStarters {
+            if normalized == starter ||
+               normalized.hasPrefix(starter + " ") ||
+               normalized.hasPrefix(starter + ",") ||
+               normalized.hasPrefix(starter + "!") ||
+               normalized.hasPrefix(starter + ".") {
+                return true
+            }
+        }
+        
+        // Short messages without action verbs are likely conversational
+        if normalized.count < 25 {
+            let actionVerbs = [
+                "rephrase", "rewrite", "make", "change", "convert",
+                "translate", "fix", "improve", "shorten", "expand",
+                "write", "edit", "modify", "update", "add", "remove"
+            ]
+            let hasActionVerb = actionVerbs.contains { normalized.contains($0) }
+            if !hasActionVerb {
+                return true
+            }
+        }
+        
+        return false
     }
 
     // MARK: - Rephrase in Chat
@@ -363,7 +407,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         tooltipWindow.showInlineLoading()
         tooltipWindow.updateUI(.chatLoading)
 
-        let hasContext = !selectedText.isEmpty
+        // Skip context for conversational messages (acknowledgments, greetings, etc.)
+        let isConversational = isConversationalMessage(prompt)
+        let hasContext = !selectedText.isEmpty && !isConversational
         let textToSend = hasContext ? selectedText : prompt
         let safeText = textToSend.count < 3
             ? textToSend + String(repeating: " ", count: 3 - textToSend.count)
@@ -415,7 +461,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         tooltipWindow.updateUI(.chatLoading)
 
         let prompt = lastTooltipPrompt
-        let hasContext = !selectedText.isEmpty
+        // Skip context for conversational messages (acknowledgments, greetings, etc.)
+        let isConversational = isConversationalMessage(prompt)
+        let hasContext = !selectedText.isEmpty && !isConversational
         let textToSend = hasContext ? selectedText : prompt
         let safeText = textToSend.count < 3
             ? textToSend + String(repeating: " ", count: 3 - textToSend.count)

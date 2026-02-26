@@ -440,6 +440,8 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     
     // MARK: - Auto-hide timer
     private var autoHideTimer: Timer?
+    private var lastShowTime: Date = .distantPast
+    private static let minVisibleDuration: TimeInterval = 1.0
 
     // MARK: - Sizing (Figma specs)
     private static let miniIconSize = AppConstants.miniIconSize
@@ -566,6 +568,45 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     func showOptionsMenu(for selection: SelectionResult) {
         showAtSelectionStart(selection: selection, state: .optionsMenu, size: Self.optionsMenuSize)
     }
+    
+    func showCentered(withText text: String? = nil) {
+        cancelAutoHideTimer()
+        clearConversation()
+        
+        if let text = text, !text.isEmpty {
+            setSelectedText(text)
+        } else {
+            setSelectedText("")
+        }
+        
+        guard let screen = NSScreen.main else { return }
+        let visibleFrame = screen.visibleFrame
+        let width = Self.chatWindowWidth
+        let height: CGFloat = Self.chatWindowMaxHeight
+        let x = visibleFrame.midX - width / 2
+        let y = visibleFrame.midY - height / 2 + 40
+        
+        let frame = NSRect(x: x, y: y, width: width, height: height)
+        
+        clearContainer()
+        buildChatWindowUI(size: frame.size)
+        currentState = .chatWindow
+        panel.isMovableByWindowBackground = true
+        
+        panel.setFrame(frame, display: false)
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+        lastShowTime = Date()
+        addEventMonitors()
+        
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.25
+            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.0)
+            panel.animator().alphaValue = 1
+        }
+        
+        focusInputField()
+    }
 
     private func showAtSelectionStart(selection: SelectionResult, state: TooltipState, size: NSSize) {
         cancelAutoHideTimer()
@@ -606,6 +647,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             
             panel.alphaValue = 0
             panel.orderFrontRegardless()
+            lastShowTime = Date()
             // Apple-style spring animation for show
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = 0.25
@@ -649,6 +691,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         
         panel.alphaValue = 0
         panel.orderFrontRegardless()
+        lastShowTime = Date()
         // Apple-style spring animation for show
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.25
@@ -741,6 +784,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
 
         panel.alphaValue = 0
         panel.orderFrontRegardless()
+        lastShowTime = Date()
         // Apple-style spring animation for show
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.25
@@ -765,7 +809,12 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         autoHideTimer = nil
     }
 
-    func hide() {
+    func hide(force: Bool = false) {
+        // Prevent hiding too quickly after showing (unless forced)
+        if !force && Date().timeIntervalSince(lastShowTime) < Self.minVisibleDuration {
+            return
+        }
+        
         cancelAutoHideTimer()
         removeEventMonitors()
         clearConversation()
@@ -786,9 +835,9 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
 
     var isInteracting: Bool {
         switch currentState {
-        case .chatWindow, .chatLoading, .error, .optionsMenu, .floatingFAB:
+        case .chatWindow, .chatLoading, .error, .optionsMenu:
             return true
-        case .miniIcon, .noSelection:
+        case .miniIcon, .noSelection, .floatingFAB:
             return false
         }
     }
@@ -1819,18 +1868,8 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
             if event.keyCode == 53 { // Escape key
-                if self.currentState == .chatWindow || self.currentState == .chatLoading {
-                    // Minimize to FAB
-                    self.lastChatWindowFrame = self.panel.frame
-                    self.updateUI(.floatingFAB)
-                } else if self.currentState == .floatingFAB {
-                    // Close FAB completely
-                    self.hide()
-                    self.onCancel?()
-                } else {
-                    self.hide()
-                    self.onCancel?()
-                }
+                self.hide()
+                self.onCancel?()
                 return nil
             }
             return event
@@ -2073,14 +2112,8 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     }
     
     @objc private func cancelTapped() {
-        // Minimize to FAB instead of hiding if we have conversation
-        if currentState == .chatWindow || currentState == .chatLoading {
-            lastChatWindowFrame = panel.frame
-            updateUI(.floatingFAB)
-        } else {
-            hide()
-            onCancel?()
-        }
+        hide()
+        onCancel?()
     }
     
     @objc private func fabTapped() {

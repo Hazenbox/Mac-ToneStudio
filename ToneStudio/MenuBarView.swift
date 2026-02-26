@@ -62,7 +62,7 @@ struct MenuBarView: View {
         .padding(.vertical, verticalPadding)
     }
     
-    // MARK: - Actions (Open Editor, Quick Rephrase)
+    // MARK: - Actions (Open ToneStudio, Quick Rephrase)
     
     private var actionsSection: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -70,9 +70,9 @@ struct MenuBarView: View {
                 onOpenEditor?()
             } label: {
                 HStack(spacing: iconLabelSpacing) {
-                    Image(systemName: "square.and.pencil")
+                    Image(systemName: "text.bubble")
                         .font(.system(size: iconSize))
-                    Text("Open Editor")
+                    Text("open tone studio")
                         .font(.system(size: iconSize))
                     Spacer()
                     Text("⌘⇧J")

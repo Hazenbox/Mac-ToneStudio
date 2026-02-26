@@ -8,7 +8,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let permissionsManager = PermissionsManager()
     let selectionMonitor = SelectionMonitor()
     let tooltipWindow = TooltipWindow()
-    let editorWindow = EditorWindow()
     let rewriteService = RewriteService()
     let feedbackService = FeedbackService()
     let accessibilityManager = AccessibilityManager()
@@ -19,8 +18,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var selectedText: String = ""
     private var lastSelectionRect: CGRect = .zero
     private var currentTask: Task<Void, Never>?
-    private var editorTask: Task<Void, Never>?
-    private var lastEditorInput: String = ""
     private var lastTooltipPrompt: String = ""
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -81,7 +78,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         selectionMonitor.stop()
         hotkeyManager.stop()
         currentTask?.cancel()
-        editorTask?.cancel()
     }
 
     // MARK: - Start monitoring
@@ -111,8 +107,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.runStressTests()
         }
         
-        setupEditorCallbacks()
-        
         NSLog("✅ Monitoring started successfully")
         Logger.permissions.info("Selection monitoring active")
     }
@@ -132,11 +126,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastSelectionResult: SelectionResult?
 
     private func handleSelection(_ result: SelectionResult) {
-        // Don't show tooltip when editor window is visible
-        if editorWindow.isVisible {
-            return
-        }
-        
         // Don't interfere if click is inside the tooltip window
         let clickPoint = result.tooltipAnchorPoint
         if tooltipWindow.isVisible,
@@ -159,17 +148,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lastSelectionRect = result.selectionBounds
         lastSelectionResult = result
 
-        // Hide existing tooltip before showing new one
+        // Hide existing tooltip before showing new one (force hide to allow new selection)
         if tooltipWindow.isVisible {
-            tooltipWindow.hide()
+            tooltipWindow.hide(force: true)
         }
 
         // Small delay to ensure clean state transition
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let self else { return }
-            // Double-check editor isn't visible after delay
-            guard !self.editorWindow.isVisible else { return }
-            // Use the new smart positioning method
             self.tooltipWindow.showMiniIcon(for: result)
             self.setupTooltipCallbacks()
         }
@@ -365,34 +351,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     
-    // MARK: - Editor
+    // MARK: - Editor (now unified with chat window)
     
     private func handleEditorHotkey() {
-        // If editor is visible, toggle it off
-        if editorWindow.isVisible {
-            editorWindow.hide()
+        // If chat window is already visible, toggle it off
+        if tooltipWindow.isVisible {
+            tooltipWindow.hide()
+            currentTask?.cancel()
+            currentTask = nil
             return
         }
         
-        // Always hide tooltip first to clean up state
-        if tooltipWindow.isVisible {
-            tooltipWindow.hide()
-        }
-        
-        // Cancel any pending tooltip tasks
-        currentTask?.cancel()
-        currentTask = nil
-        
-        // Try to get selected text to pre-fill using SelectedTextKit
+        // Try to get selected text to pre-fill
         Task {
             let text = await selectionMonitor.getSelectedText()
-            
             if let text = text, !text.isEmpty, text.count >= AppConstants.minSelectionLength {
                 selectedText = text
-                editorWindow.showWithText(text)
+                tooltipWindow.showCentered(withText: text)
             } else {
-                editorWindow.show()
+                tooltipWindow.showCentered(withText: nil)
             }
+            setupTooltipCallbacks()
         }
     }
     
@@ -406,9 +385,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         currentTask?.cancel()
         currentTask = nil
-        
         selectedText = text
-        editorWindow.showWithText(text)
+        tooltipWindow.showCentered(withText: text)
+        setupTooltipCallbacks()
     }
     
     // MARK: - Service Handlers
@@ -423,67 +402,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Logger.services.info("Service rephrase completed, result written to pasteboard")
         } catch {
             Logger.services.error("Service rephrase failed: \(error.localizedDescription)")
-        }
-    }
-    
-    private func setupEditorCallbacks() {
-        editorWindow.onGenerate = { [weak self] text in
-            self?.lastEditorInput = text
-            self?.performEditorRewrite(text: text)
-        }
-        
-        editorWindow.onCopy = { text in
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(text, forType: .string)
-            Logger.editor.info("Copied result to clipboard")
-        }
-        
-        editorWindow.onTryAgain = { [weak self] in
-            guard let self, !self.lastEditorInput.isEmpty else { return }
-            self.performEditorRewrite(text: self.lastEditorInput)
-        }
-        
-        editorWindow.onLike = { [weak self] resultText in
-            self?.submitFeedback(type: "thumbs_up", content: resultText)
-        }
-        
-        editorWindow.onDislike = { [weak self] resultText in
-            self?.submitFeedback(type: "thumbs_down", content: resultText)
-        }
-    }
-    
-    private func submitFeedback(type: String, content: String) {
-        Task {
-            do {
-                try await feedbackService.submit(
-                    feedbackType: type,
-                    messageContent: content,
-                    originalContent: lastEditorInput
-                )
-            } catch {
-                Logger.feedback.error("Failed to submit feedback: \(error.localizedDescription)")
-            }
-        }
-    }
-    
-    private func performEditorRewrite(text: String) {
-        editorTask?.cancel()
-        
-        editorWindow.updateState(.loading)
-        
-        editorTask = Task {
-            do {
-                // Pass the entire input as the prompt - user can include instructions in their text
-                let result = try await rewriteService.rewrite(text: text, prompt: text)
-                guard !Task.isCancelled else { return }
-                editorWindow.updateState(.result(result))
-            } catch is CancellationError {
-                // User cancelled
-            } catch {
-                guard !Task.isCancelled else { return }
-                let message = (error as? RewriteService.RewriteError)?.errorDescription ?? error.localizedDescription
-                editorWindow.updateState(.error(message))
-            }
         }
     }
     

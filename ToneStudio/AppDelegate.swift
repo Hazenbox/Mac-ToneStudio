@@ -278,10 +278,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lastTooltipPrompt = prompt
         
         tooltipWindow.appendMessage(ChatMessage(role: .user, content: prompt))
+        
+        // Check if there's selected text to work with
+        let text = selectedText
+        if text.isEmpty {
+            tooltipWindow.appendMessage(ChatMessage(role: .assistant, content: "Please select some text first, then I can help you rewrite or improve it."))
+            tooltipWindow.updateUI(.chatWindow)
+            return
+        }
+        
         tooltipWindow.showInlineLoading()
         tooltipWindow.updateUI(.chatLoading)
 
-        let text = selectedText
         currentTask = Task {
             do {
                 let result = try await rewriteService.rewrite(text: text, prompt: prompt)

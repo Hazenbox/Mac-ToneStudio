@@ -1,0 +1,38 @@
+---
+description: macOS app build workflow - always reset permissions and rebuild
+alwaysApply: true
+---
+
+# macOS App Build Workflow
+
+When building and testing ToneStudio, ALWAYS follow this workflow:
+
+## Required Steps Before Testing
+
+1. **Reset accessibility permissions**:
+   ```bash
+   tccutil reset Accessibility com.upendranath.ToneStudio 2>/dev/null
+   tccutil reset Accessibility com.upendranath.ToneStudio.debug 2>/dev/null
+   ```
+
+2. **Clear derived data**:
+   ```bash
+   rm -rf ~/Library/Developer/Xcode/DerivedData/ToneStudio-*
+   ```
+
+3. **Build the project**:
+   ```bash
+   xcodebuild -project ToneStudio.xcodeproj -scheme ToneStudio -configuration Debug clean build
+   ```
+
+4. **Launch the app**:
+   ```bash
+   open ~/Library/Developer/Xcode/DerivedData/ToneStudio-*/Build/Products/Debug/ToneStudio.app
+   ```
+
+## Important Notes
+
+- Never just say "the app has been built and launched" without actually running the full workflow
+- The user will need to grant Accessibility permissions again after reset
+- Always use `clean build` to ensure fresh compilation
+- Wait for build to complete before launching

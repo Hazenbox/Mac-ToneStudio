@@ -217,7 +217,7 @@ actor WordingRulesService {
         self.autoFixRules = data.autoFixRules
         
         self.avoidWordSet = Set(data.avoidWords.map { $0.word })
-        self.autoFixMap = Dictionary(uniqueKeysWithValues: data.autoFixRules.map { ($0.original.lowercased(), $0) })
+        self.autoFixMap = Dictionary(data.autoFixRules.map { ($0.original.lowercased(), $0) }) { first, _ in first }
     }
     
     private func loadFromCache() -> WordingRulesData? {
@@ -241,7 +241,7 @@ actor WordingRulesService {
         autoFixRules = DefaultWordingRules.autoFixRules
         
         avoidWordSet = Set(avoidWords.map { $0.word })
-        autoFixMap = Dictionary(uniqueKeysWithValues: autoFixRules.map { ($0.original.lowercased(), $0) })
+        autoFixMap = Dictionary(autoFixRules.map { ($0.original.lowercased(), $0) }) { first, _ in first }
     }
 }
 

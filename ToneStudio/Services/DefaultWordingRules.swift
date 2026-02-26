@@ -334,10 +334,10 @@ enum DefaultWordingRules {
         ]
         rules += genderNeutral.map { AutoFixRule(original: $0.0, replacement: $0.1, category: .genderNeutral) }
         
-        // Simple alternatives (30)
+        // Simple alternatives (29) - "optimize" removed as it's in britishSpelling
         let simpleAlternatives = [
             ("utilize", "use"), ("leverage", "use"), ("facilitate", "help"),
-            ("implement", "do"), ("optimize", "improve"), ("streamline", "simplify"),
+            ("implement", "do"), ("streamline", "simplify"),
             ("endeavor", "try"), ("elucidate", "explain"), ("expedite", "speed up"),
             ("commence", "start"), ("terminate", "end"), ("ascertain", "find out"),
             ("ameliorate", "improve"), ("cognizant", "aware"), ("disseminate", "share"),

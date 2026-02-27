@@ -314,7 +314,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         updateUIForState()
         
         window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate(ignoringOtherApps: false)
         
         window.makeFirstResponder(inputTextView)
         

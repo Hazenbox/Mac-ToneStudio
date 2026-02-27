@@ -150,6 +150,11 @@ final class KeyablePanel: NSPanel {
     override var canBecomeKey: Bool {
         return allowsKeyStatus
     }
+    
+    override var becomesKeyOnlyIfNeeded: Bool {
+        get { return true }
+        set { }
+    }
 }
 
 // MARK: - Typing Indicator (animated bouncing dots)
@@ -500,7 +505,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     override init() {
         panel = KeyablePanel(
             contentRect: NSRect(x: 0, y: 0, width: 360, height: 240),
-            styleMask: [.borderless],
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -1333,8 +1338,9 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         
         // Focus the input field after a short delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            self?.panel.makeKeyAndOrderFront(nil)
-            self?.panel.makeFirstResponder(textField)
+            guard let self else { return }
+            self.panel.allowsKeyStatus = true
+            self.panel.makeFirstResponder(textField)
         }
     }
     
@@ -1494,11 +1500,12 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         chatContentView = contentView
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            self?.scrollToBottom()
+            guard let self else { return }
+            self.scrollToBottom()
             // Focus input field when chat window is shown
-            if let field = self?.inputField, field.isEnabled {
-                self?.panel.makeKeyAndOrderFront(nil)
-                self?.panel.makeFirstResponder(field)
+            if let field = self.inputField, field.isEnabled {
+                self.panel.allowsKeyStatus = true
+                self.panel.makeFirstResponder(field)
             }
         }
     }
@@ -2354,7 +2361,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
             guard let self, let field = self.inputField else { return }
             self.panel.allowsKeyStatus = true
-            self.panel.makeKeyAndOrderFront(nil)
             self.panel.makeFirstResponder(field)
         }
     }

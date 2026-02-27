@@ -166,8 +166,11 @@ actor RewriteService {
             )
         }
 
-        Logger.rewrite.info("Rewrite success (\(rewrittenText.count) chars, trust: \(trustScore?.overall ?? -1))")
-        return RewriteResult(text: rewrittenText, trustScore: trustScore, evidence: evidence)
+        // Apply proper sentence casing (capitalize first letter of sentences, "I" pronoun, brand names)
+        let correctedText = await SentenceCaseService.shared.applySentenceCase(to: rewrittenText)
+        
+        Logger.rewrite.info("Rewrite success (\(correctedText.count) chars, trust: \(trustScore?.overall ?? -1))")
+        return RewriteResult(text: correctedText, trustScore: trustScore, evidence: evidence)
     }
 }
 

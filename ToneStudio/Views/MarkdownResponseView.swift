@@ -18,53 +18,17 @@ struct MarkdownResponseView: View {
     
     var body: some View {
         Markdown(content)
-            .markdownTheme(.gitHub)
+            .markdownTheme(.toneStudioDark)
             .textSelection(.enabled)
             .environment(\.colorScheme, .dark)
     }
 }
 
 extension Theme {
-    static let toneStudio = Theme()
+    static let toneStudioDark = Theme()
         .text {
             ForegroundColor(.white)
             FontSize(14)
-        }
-        .heading1 { configuration in
-            configuration.label
-                .markdownMargin(top: 16, bottom: 8)
-                .markdownTextStyle {
-                    FontSize(22)
-                    FontWeight(.bold)
-                    ForegroundColor(.white)
-                }
-        }
-        .heading2 { configuration in
-            configuration.label
-                .markdownMargin(top: 14, bottom: 6)
-                .markdownTextStyle {
-                    FontSize(18)
-                    FontWeight(.semibold)
-                    ForegroundColor(.white)
-                }
-        }
-        .heading3 { configuration in
-            configuration.label
-                .markdownMargin(top: 12, bottom: 4)
-                .markdownTextStyle {
-                    FontSize(16)
-                    FontWeight(.semibold)
-                    ForegroundColor(.white)
-                }
-        }
-        .heading4 { configuration in
-            configuration.label
-                .markdownMargin(top: 10, bottom: 4)
-                .markdownTextStyle {
-                    FontSize(14)
-                    FontWeight(.semibold)
-                    ForegroundColor(.white)
-                }
         }
         .strong {
             FontWeight(.bold)
@@ -80,52 +44,110 @@ extension Theme {
         }
         .code {
             FontFamilyVariant(.monospaced)
-            FontSize(13)
+            FontSize(.em(0.85))
             ForegroundColor(Color(red: 0.9, green: 0.6, blue: 0.4))
             BackgroundColor(Color.white.opacity(0.08))
+        }
+        .heading1 { configuration in
+            configuration.label
+                .relativePadding(.bottom, length: .em(0.3))
+                .relativeLineSpacing(.em(0.125))
+                .markdownMargin(top: 16, bottom: 12)
+                .markdownTextStyle {
+                    FontWeight(.bold)
+                    FontSize(.em(1.8))
+                    ForegroundColor(.white)
+                }
+        }
+        .heading2 { configuration in
+            configuration.label
+                .relativePadding(.bottom, length: .em(0.3))
+                .relativeLineSpacing(.em(0.125))
+                .markdownMargin(top: 14, bottom: 10)
+                .markdownTextStyle {
+                    FontWeight(.semibold)
+                    FontSize(.em(1.4))
+                    ForegroundColor(.white)
+                }
+        }
+        .heading3 { configuration in
+            configuration.label
+                .relativeLineSpacing(.em(0.125))
+                .markdownMargin(top: 12, bottom: 8)
+                .markdownTextStyle {
+                    FontWeight(.semibold)
+                    FontSize(.em(1.2))
+                    ForegroundColor(.white)
+                }
+        }
+        .heading4 { configuration in
+            configuration.label
+                .relativeLineSpacing(.em(0.125))
+                .markdownMargin(top: 10, bottom: 6)
+                .markdownTextStyle {
+                    FontWeight(.semibold)
+                    ForegroundColor(.white)
+                }
+        }
+        .paragraph { configuration in
+            configuration.label
+                .fixedSize(horizontal: false, vertical: true)
+                .relativeLineSpacing(.em(0.2))
+                .markdownMargin(top: 0, bottom: 12)
+        }
+        .blockquote { configuration in
+            HStack(spacing: 0) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.white.opacity(0.3))
+                    .relativeFrame(width: .em(0.2))
+                configuration.label
+                    .markdownTextStyle { ForegroundColor(.white.opacity(0.8)) }
+                    .relativePadding(.horizontal, length: .em(0.8))
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .markdownMargin(top: 8, bottom: 8)
         }
         .codeBlock { configuration in
             ToneStudioCodeBlockView(configuration: configuration)
         }
-        .blockquote { configuration in
-            configuration.label
-                .padding(.leading, 12)
-                .overlay(alignment: .leading) {
-                    Rectangle()
-                        .fill(Color.white.opacity(0.3))
-                        .frame(width: 3)
-                }
-                .markdownMargin(top: 8, bottom: 8)
-        }
         .listItem { configuration in
             configuration.label
-                .markdownMargin(top: 2, bottom: 2)
-        }
-        .paragraph { configuration in
-            configuration.label
-                .markdownMargin(top: 0, bottom: 8)
-        }
-        .table { configuration in
-            configuration.label
-                .markdownMargin(top: 8, bottom: 8)
-                .markdownTableBorderStyle(.init(color: .white.opacity(0.2), width: 1))
-                .markdownTableBackgroundStyle(
-                    .alternatingRows(Color.white.opacity(0.05), Color.clear)
-                )
-        }
-        .tableCell { configuration in
-            configuration.label
-                .padding(8)
-        }
-        .thematicBreak {
-            Divider()
-                .overlay(Color.white.opacity(0.2))
-                .markdownMargin(top: 12, bottom: 12)
+                .markdownMargin(top: .em(0.2))
         }
         .taskListMarker { configuration in
             Image(systemName: configuration.isCompleted ? "checkmark.square.fill" : "square")
-                .foregroundColor(configuration.isCompleted ? .green : .white.opacity(0.5))
-                .font(.system(size: 14))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(configuration.isCompleted ? Color.green : Color.white.opacity(0.5))
+                .imageScale(.small)
+                .relativeFrame(minWidth: .em(1.5), alignment: .trailing)
+        }
+        .table { configuration in
+            configuration.label
+                .fixedSize(horizontal: false, vertical: true)
+                .markdownTableBorderStyle(.init(color: .white.opacity(0.2), width: 1))
+                .markdownTableBackgroundStyle(
+                    .alternatingRows(Color.white.opacity(0.03), Color.clear)
+                )
+                .markdownMargin(top: 8, bottom: 12)
+        }
+        .tableCell { configuration in
+            configuration.label
+                .markdownTextStyle {
+                    if configuration.row == 0 {
+                        FontWeight(.semibold)
+                    }
+                    BackgroundColor(nil)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, 6)
+                .padding(.horizontal, 10)
+                .relativeLineSpacing(.em(0.2))
+        }
+        .thematicBreak {
+            Divider()
+                .relativeFrame(height: .em(0.2))
+                .overlay(Color.white.opacity(0.2))
+                .markdownMargin(top: 16, bottom: 16)
         }
 }
 

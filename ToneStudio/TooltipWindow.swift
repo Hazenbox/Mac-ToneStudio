@@ -442,8 +442,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     private var lastChatWindowFrame: NSRect?
     private var draggableFABView: DraggableFABView?
     private var validationBadgeView: NSView?
-    private var markdownViews: [Int: (view: MarkdownWebView, estimatedHeight: CGFloat)] = [:]
-    private var pendingHeightUpdates: Bool = false
 
     // MARK: - Event monitors
     private var globalClickMonitor: Any?
@@ -1018,7 +1016,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     }
     
     private func estimateMarkdownHeight(_ text: String, width: CGFloat) -> CGFloat {
-        let baseLineHeight: CGFloat = 18
+        let baseLineHeight: CGFloat = 22
         let charPerLine = max(Int(width / 7), 40)
         let lines = text.components(separatedBy: .newlines)
         
@@ -1654,9 +1652,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             yPos -= Self.messageSpacing  // Gap below action pill
         }
         
-        // Clear previous markdown view references
-        markdownViews.removeAll()
-        
         // Conversation messages in chronological order (oldest first, newest at bottom)
         for (index, msgData) in messageHeights.enumerated() {
             let message = conversationMessages[index]
@@ -1668,11 +1663,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
                 yPos -= textHeight
                 
                 let markdownView = MarkdownWebView(frame: NSRect(x: padding, y: yPos, width: availableWidth, height: textHeight))
-                markdownViews[index] = (view: markdownView, estimatedHeight: textHeight)
-                
-                markdownView.configure(markdown: message.content) { [weak self] newHeight in
-                    self?.handleWebViewHeightChange(index: index, newHeight: newHeight)
-                }
+                markdownView.configure(markdown: message.content)
                 contentView.addSubview(markdownView)
                 
                 yPos -= 8  // Gap between text and action buttons
@@ -1771,24 +1762,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         // Scroll to y=0 to show the bottom content (newest messages)
         // Since we build from top (high y) to bottom (low y), y=0 shows the most recent
         scrollView.contentView.scroll(to: NSPoint(x: 0, y: 0))
-    }
-    
-    private func handleWebViewHeightChange(index: Int, newHeight: CGFloat) {
-        guard let entry = markdownViews[index] else { return }
-        
-        let heightDiff = newHeight - entry.estimatedHeight
-        guard abs(heightDiff) > 2 else { return }
-        
-        markdownViews[index] = (view: entry.view, estimatedHeight: newHeight)
-        
-        guard !pendingHeightUpdates else { return }
-        pendingHeightUpdates = true
-        
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.pendingHeightUpdates = false
-            self.rebuildChatContent()
-        }
     }
     
     private func estimatePillWidth(_ text: String) -> CGFloat {

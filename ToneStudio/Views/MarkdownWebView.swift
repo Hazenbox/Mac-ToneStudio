@@ -7,7 +7,7 @@ private let logger = Logger(subsystem: "com.upendranath.ToneStudio", category: "
 final class MarkdownWebView: NSView {
     private var webView: WKWebView!
     private var onHeightChange: ((CGFloat) -> Void)?
-    private var currentHeight: CGFloat = 0
+    private var currentHeight: CGFloat = 22
     
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -454,32 +454,13 @@ final class MarkdownWebView: NSView {
                         }
                     });
                     
-                    // Height reporting function
-                    function reportHeight() {
+                    // Single height report after content loads
+                    setTimeout(function() {
                         var height = document.body.scrollHeight;
                         if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.heightChanged) {
                             window.webkit.messageHandlers.heightChanged.postMessage(height);
                         }
-                    }
-                    
-                    // Report immediately
-                    reportHeight();
-                    
-                    // Report after short delay for fonts/images
-                    setTimeout(reportHeight, 10);
-                    setTimeout(reportHeight, 50);
-                    setTimeout(reportHeight, 150);
-                    
-                    // Observe DOM changes
-                    var observer = new MutationObserver(function() {
-                        reportHeight();
-                    });
-                    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
-                    
-                    // Report when images load
-                    document.querySelectorAll('img').forEach(function(img) {
-                        img.addEventListener('load', reportHeight);
-                    });
+                    }, 50);
                 })();
             </script>
         </body>

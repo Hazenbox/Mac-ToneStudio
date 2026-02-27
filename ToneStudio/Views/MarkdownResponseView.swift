@@ -1,17 +1,26 @@
 import SwiftUI
 import MarkdownUI
 import AppKit
+import OSLog
+
+private let logger = Logger(subsystem: "com.upendranath.ToneStudio", category: "Markdown")
 
 struct MarkdownResponseView: View {
     let content: String
     let maxWidth: CGFloat
     
+    init(content: String, maxWidth: CGFloat) {
+        self.content = content
+        self.maxWidth = maxWidth
+        logger.debug("MarkdownResponseView init - content length: \(content.count), maxWidth: \(maxWidth)")
+        logger.debug("Content preview: \(String(content.prefix(200)))")
+    }
+    
     var body: some View {
         Markdown(content)
-            .markdownTheme(.toneStudio)
+            .markdownTheme(.gitHub)
             .textSelection(.enabled)
-            .frame(maxWidth: maxWidth, alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
+            .environment(\.colorScheme, .dark)
     }
 }
 
@@ -192,14 +201,16 @@ struct ToneStudioCodeBlockView: View {
 
 
 final class MarkdownHostingView: NSView {
-    private var hostingController: NSHostingController<AnyView>?
-    private var content: String = ""
-    private var maxWidth: CGFloat = 400
+    private var hostingController: NSHostingController<MarkdownResponseView>?
+    private var currentContent: String = ""
+    private var currentMaxWidth: CGFloat = 400
+    private var isConfigured: Bool = false
     
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor
+        logger.debug("MarkdownHostingView init with frame: \(frameRect.debugDescription)")
     }
     
     required init?(coder: NSCoder) {
@@ -207,36 +218,74 @@ final class MarkdownHostingView: NSView {
     }
     
     var calculatedHeight: CGFloat {
-        guard let hostingController else { return 100 }
+        guard let hostingController else { 
+            logger.debug("calculatedHeight: no hostingController, returning 100")
+            return 100 
+        }
         hostingController.view.layoutSubtreeIfNeeded()
         let fittingSize = hostingController.view.fittingSize
+        logger.debug("calculatedHeight: fittingSize = \(fittingSize.debugDescription)")
         return max(fittingSize.height, 50)
     }
     
     func configure(content: String, maxWidth: CGFloat) {
-        self.content = content
-        self.maxWidth = maxWidth
+        logger.debug("configure() called - content length: \(content.count), maxWidth: \(maxWidth)")
+        logger.debug("configure() - window: \(String(describing: self.window)), bounds: \(self.bounds.debugDescription)")
         
-        hostingController?.view.removeFromSuperview()
-        hostingController = nil
+        self.currentContent = content
+        self.currentMaxWidth = maxWidth
         
-        let swiftUIView = MarkdownResponseView(content: content, maxWidth: maxWidth)
-            .environment(\.colorScheme, .dark)
+        if window != nil {
+            logger.debug("configure() - view is in window hierarchy, creating hosting controller now")
+            createOrUpdateHostingController()
+        } else {
+            logger.debug("configure() - view NOT in window hierarchy, deferring to viewDidMoveToWindow")
+            isConfigured = false
+        }
+    }
+    
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        logger.debug("viewDidMoveToWindow() - window: \(String(describing: self.window))")
         
-        let controller = NSHostingController(rootView: AnyView(swiftUIView))
+        if window != nil && !currentContent.isEmpty && !isConfigured {
+            logger.debug("viewDidMoveToWindow() - creating hosting controller for deferred content")
+            createOrUpdateHostingController()
+        }
+    }
+    
+    private func createOrUpdateHostingController() {
+        logger.debug("createOrUpdateHostingController() - bounds: \(self.bounds.debugDescription)")
         
-        if #available(macOS 13.0, *) {
-            controller.sizingOptions = []
+        let swiftUIView = MarkdownResponseView(content: currentContent, maxWidth: currentMaxWidth)
+        
+        if let existing = hostingController {
+            logger.debug("createOrUpdateHostingController() - updating existing controller")
+            existing.rootView = swiftUIView
+            existing.view.needsLayout = true
+            existing.view.layoutSubtreeIfNeeded()
+        } else {
+            logger.debug("createOrUpdateHostingController() - creating new controller")
+            
+            let controller = NSHostingController(rootView: swiftUIView)
+            
+            if #available(macOS 13.0, *) {
+                controller.sizingOptions = [.intrinsicContentSize]
+            }
+            
+            controller.view.translatesAutoresizingMaskIntoConstraints = true
+            controller.view.frame = bounds
+            controller.view.autoresizingMask = [.width, .height]
+            controller.view.wantsLayer = true
+            controller.view.layer?.backgroundColor = NSColor.clear.cgColor
+            
+            addSubview(controller.view)
+            self.hostingController = controller
+            
+            logger.debug("createOrUpdateHostingController() - controller added, frame: \(controller.view.frame.debugDescription)")
         }
         
-        controller.view.translatesAutoresizingMaskIntoConstraints = true
-        controller.view.frame = bounds
-        controller.view.autoresizingMask = [.width, .height]
-        controller.view.wantsLayer = true
-        controller.view.layer?.backgroundColor = NSColor.clear.cgColor
-        
-        addSubview(controller.view)
-        self.hostingController = controller
+        isConfigured = true
         
         DispatchQueue.main.async { [weak self] in
             guard let self = self, let controller = self.hostingController else { return }
@@ -245,31 +294,20 @@ final class MarkdownHostingView: NSView {
             controller.view.layoutSubtreeIfNeeded()
             controller.view.needsDisplay = true
             self.needsDisplay = true
+            logger.debug("createOrUpdateHostingController() - async layout complete, frame: \(controller.view.frame.debugDescription)")
         }
     }
     
     override func layout() {
         super.layout()
-        hostingController?.view.frame = bounds
-    }
-    
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        if window != nil {
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self, let controller = self.hostingController else { return }
-                controller.view.frame = self.bounds
-                controller.view.needsLayout = true
-                controller.view.layoutSubtreeIfNeeded()
-                controller.view.needsDisplay = true
-                self.needsDisplay = true
-            }
+        if let controller = hostingController {
+            controller.view.frame = bounds
         }
     }
     
     override var intrinsicContentSize: NSSize {
         guard let hostingController else {
-            return NSSize(width: maxWidth, height: NSView.noIntrinsicMetric)
+            return NSSize(width: currentMaxWidth, height: NSView.noIntrinsicMetric)
         }
         return hostingController.view.fittingSize
     }

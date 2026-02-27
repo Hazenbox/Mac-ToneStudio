@@ -1,5 +1,5 @@
 {
-  "originHash" : "f3dddd09e7a6462e80c6eb09a5b9b95e3bded03f79ddc7c3a48ddd80cd68bd58",
+  "originHash" : "f092a25cbbf0e60e6f81eb0b05c9ba0c53b06fa9bcc79b799e10382222696e09",
   "pins" : [
     {
       "identity" : "axswift",
@@ -11,12 +11,12 @@
       }
     },
     {
-      "identity" : "down",
+      "identity" : "down-gfm",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/johnxnguyen/Down",
+      "location" : "https://github.com/stackotter/Down-gfm",
       "state" : {
-        "revision" : "f34b166be1f1db4aa8f573067e901d72f2a6be57",
-        "version" : "0.11.0"
+        "revision" : "0fc19f24ea5ae4ae803c7cdc186b9b02f1b5661b",
+        "version" : "0.12.0"
       }
     },
     {

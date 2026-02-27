@@ -388,7 +388,7 @@
 		};
 		63137D1E2F60000000C41B2E /* XCRemoteSwiftPackageReference "Down" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/johnxnguyen/Down";
+			repositoryURL = "https://github.com/stackotter/Down-gfm";
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 0.11.0;

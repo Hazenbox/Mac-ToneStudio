@@ -7,7 +7,7 @@ private let logger = Logger(subsystem: "com.upendranath.ToneStudio", category: "
 final class MarkdownWebView: NSView {
     private var webView: WKWebView!
     private var onHeightChange: ((CGFloat) -> Void)?
-    private var currentHeight: CGFloat = 50
+    private var currentHeight: CGFloat = 0
     
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -292,33 +292,49 @@ final class MarkdownWebView: NSView {
                     margin: 0;
                 }
                 
-                /* Tables */
+                /* Tables - wrapped for horizontal scroll */
+                .table-wrapper {
+                    overflow-x: auto;
+                    margin: 12px 0;
+                    border-radius: 8px;
+                }
+                
                 table {
                     border-collapse: collapse;
-                    width: 100%;
-                    margin: 12px 0;
+                    min-width: 100%;
                     font-size: 13px;
                     border-radius: 8px;
                     overflow: hidden;
+                    margin: 0;
                 }
                 
                 thead {
-                    background: rgba(255, 255, 255, 0.06);
+                    background: rgba(255, 255, 255, 0.08);
                 }
                 
                 th, td {
-                    border: 1px solid rgba(255, 255, 255, 0.12);
+                    border: 1px solid rgba(255, 255, 255, 0.15);
                     padding: 10px 14px;
                     text-align: left;
+                    min-width: 80px;
                 }
                 
                 th {
                     font-weight: 600;
                     color: white;
+                    background: rgba(255, 255, 255, 0.06);
                 }
                 
-                tr:nth-child(even) {
+                tbody tr:nth-child(odd) {
                     background: rgba(255, 255, 255, 0.02);
+                }
+                
+                tbody tr:nth-child(even) {
+                    background: rgba(255, 255, 255, 0.04);
+                }
+                
+                tbody tr:hover {
+                    background: rgba(255, 255, 255, 0.08);
                 }
                 
                 /* Horizontal rule */
@@ -335,6 +351,68 @@ final class MarkdownWebView: NSView {
                     border-radius: 6px;
                 }
                 
+                /* Strikethrough */
+                del, s {
+                    text-decoration: line-through;
+                    color: rgba(255, 255, 255, 0.6);
+                }
+                
+                /* Definition lists */
+                dl {
+                    margin: 12px 0;
+                }
+                
+                dt {
+                    font-weight: 600;
+                    color: white;
+                    margin-top: 10px;
+                }
+                
+                dd {
+                    margin-left: 20px;
+                    color: rgba(255, 255, 255, 0.9);
+                }
+                
+                /* Keyboard input */
+                kbd {
+                    background: rgba(255, 255, 255, 0.1);
+                    border: 1px solid rgba(255, 255, 255, 0.2);
+                    border-radius: 4px;
+                    padding: 2px 6px;
+                    font-family: "SF Mono", Monaco, monospace;
+                    font-size: 0.85em;
+                }
+                
+                /* Abbreviations */
+                abbr[title] {
+                    text-decoration: underline dotted;
+                    cursor: help;
+                }
+                
+                /* Mark/highlight */
+                mark {
+                    background: rgba(255, 213, 79, 0.3);
+                    color: white;
+                    padding: 1px 4px;
+                    border-radius: 2px;
+                }
+                
+                /* Subscript and superscript */
+                sub, sup {
+                    font-size: 0.75em;
+                    line-height: 0;
+                    position: relative;
+                    vertical-align: baseline;
+                }
+                
+                sup {
+                    top: -0.5em;
+                }
+                
+                sub {
+                    bottom: -0.25em;
+                }
+                
                 /* Selection styling */
                 ::selection {
                     background: rgba(88, 166, 255, 0.3);
@@ -343,8 +421,8 @@ final class MarkdownWebView: NSView {
                 
                 /* Scrollbar styling */
                 ::-webkit-scrollbar {
-                    width: 8px;
-                    height: 8px;
+                    width: 6px;
+                    height: 6px;
                 }
                 
                 ::-webkit-scrollbar-track {
@@ -353,7 +431,7 @@ final class MarkdownWebView: NSView {
                 
                 ::-webkit-scrollbar-thumb {
                     background: rgba(255, 255, 255, 0.2);
-                    border-radius: 4px;
+                    border-radius: 3px;
                 }
                 
                 ::-webkit-scrollbar-thumb:hover {
@@ -364,12 +442,45 @@ final class MarkdownWebView: NSView {
         <body>
             <div id="content">\(body)</div>
             <script>
-                setTimeout(function() {
-                    var height = document.body.scrollHeight;
-                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.heightChanged) {
-                        window.webkit.messageHandlers.heightChanged.postMessage(height);
+                (function() {
+                    // Wrap tables in scroll containers
+                    var tables = document.querySelectorAll('table');
+                    tables.forEach(function(table) {
+                        if (!table.parentElement.classList.contains('table-wrapper')) {
+                            var wrapper = document.createElement('div');
+                            wrapper.className = 'table-wrapper';
+                            table.parentNode.insertBefore(wrapper, table);
+                            wrapper.appendChild(table);
+                        }
+                    });
+                    
+                    // Height reporting function
+                    function reportHeight() {
+                        var height = document.body.scrollHeight;
+                        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.heightChanged) {
+                            window.webkit.messageHandlers.heightChanged.postMessage(height);
+                        }
                     }
-                }, 50);
+                    
+                    // Report immediately
+                    reportHeight();
+                    
+                    // Report after short delay for fonts/images
+                    setTimeout(reportHeight, 10);
+                    setTimeout(reportHeight, 50);
+                    setTimeout(reportHeight, 150);
+                    
+                    // Observe DOM changes
+                    var observer = new MutationObserver(function() {
+                        reportHeight();
+                    });
+                    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+                    
+                    // Report when images load
+                    document.querySelectorAll('img').forEach(function(img) {
+                        img.addEventListener('load', reportHeight);
+                    });
+                })();
             </script>
         </body>
         </html>

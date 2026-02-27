@@ -12,15 +12,17 @@ struct MarkdownResponseView: View {
     init(content: String, maxWidth: CGFloat) {
         self.content = content
         self.maxWidth = maxWidth
-        logger.debug("MarkdownResponseView init - content length: \(content.count), maxWidth: \(maxWidth)")
-        logger.debug("Content preview: \(String(content.prefix(200)))")
+        print("[MARKDOWN DEBUG] MarkdownResponseView init - content length: \(content.count), maxWidth: \(maxWidth)")
+        print("[MARKDOWN DEBUG] Content preview: \(String(content.prefix(300)))")
     }
     
     var body: some View {
+        // Try basic Markdown without custom theme first to isolate theme issues
         Markdown(content)
-            .markdownTheme(.toneStudioDark)
+            .markdownTheme(.gitHub)  // Use built-in theme to isolate issue
             .textSelection(.enabled)
-            .environment(\.colorScheme, .dark)
+            .preferredColorScheme(.dark)
+            .background(Color.red.opacity(0.3))  // DEBUG: Should see red tint if SwiftUI renders
     }
 }
 
@@ -251,43 +253,82 @@ final class MarkdownHostingView: NSView {
     }
     
     func configure(content: String, maxWidth: CGFloat) {
-        logger.debug("configure() called - content length: \(content.count), maxWidth: \(maxWidth)")
-        logger.debug("configure() - window: \(String(describing: self.window)), bounds: \(self.bounds.debugDescription)")
+        print("[MARKDOWN DEBUG] configure() called - content length: \(content.count), maxWidth: \(maxWidth)")
+        print("[MARKDOWN DEBUG] configure() - window: \(String(describing: self.window)), bounds: \(self.bounds)")
+        print("[MARKDOWN DEBUG] Content debugDescription: \(content.debugDescription)")
+        
+        // Print first 50 bytes to check for invisible characters
+        let bytes = Array(content.utf8.prefix(100))
+        print("[MARKDOWN DEBUG] First 100 content bytes: \(bytes)")
+        
+        // Check for triple backticks
+        if content.contains("```") {
+            print("[MARKDOWN DEBUG] Content CONTAINS triple backticks")
+        } else {
+            print("[MARKDOWN DEBUG] WARNING: Content does NOT contain triple backticks!")
+        }
         
         self.currentContent = content
         self.currentMaxWidth = maxWidth
         
-        if window != nil {
-            logger.debug("configure() - view is in window hierarchy, creating hosting controller now")
-            createOrUpdateHostingController()
-        } else {
-            logger.debug("configure() - view NOT in window hierarchy, deferring to viewDidMoveToWindow")
-            isConfigured = false
-        }
+        // Always create hosting controller immediately - don't wait for window
+        // The SwiftUI content can render even before being in window hierarchy
+        print("[MARKDOWN DEBUG] configure() - creating hosting controller immediately (window: \(window != nil))")
+        createOrUpdateHostingController()
     }
     
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        logger.debug("viewDidMoveToWindow() - window: \(String(describing: self.window))")
+        print("[MARKDOWN DEBUG] viewDidMoveToWindow() - window: \(String(describing: self.window)), bounds: \(self.bounds)")
+        print("[MARKDOWN DEBUG] viewDidMoveToWindow() - currentContent.isEmpty: \(currentContent.isEmpty), isConfigured: \(isConfigured)")
         
         if window != nil && !currentContent.isEmpty && !isConfigured {
-            logger.debug("viewDidMoveToWindow() - creating hosting controller for deferred content")
+            print("[MARKDOWN DEBUG] viewDidMoveToWindow() - creating hosting controller for deferred content")
             createOrUpdateHostingController()
+        } else {
+            print("[MARKDOWN DEBUG] viewDidMoveToWindow() - NOT creating controller (window=\(window != nil), content=\(!currentContent.isEmpty), configured=\(!isConfigured))")
         }
     }
     
     private func createOrUpdateHostingController() {
-        logger.debug("createOrUpdateHostingController() - bounds: \(self.bounds.debugDescription)")
+        print("[MARKDOWN DEBUG] createOrUpdateHostingController() - bounds: \(self.bounds), frame: \(self.frame)")
         
-        let swiftUIView = MarkdownResponseView(content: currentContent, maxWidth: currentMaxWidth)
+        // Allow zero bounds initially - the view will be laid out later
+        if bounds.width == 0 || bounds.height == 0 {
+            print("[MARKDOWN DEBUG] Note: Zero bounds, using frame instead")
+        }
+        
+        // Use frame if bounds is zero (frame was set in init)
+        let effectiveBounds = bounds.width > 0 ? bounds : frame
+        print("[MARKDOWN DEBUG] Using effectiveBounds: \(effectiveBounds)")
+        
+        // DEBUG: Test with hardcoded content to isolate issue
+        let useHardcodedContent = false  // Set to false to use actual content
+        let testContent = """
+        # Test Heading
+        
+        This is **bold** and *italic* text.
+        
+        ```python
+        def hello():
+            print("Hello World")
+        ```
+        
+        Normal text after code block.
+        """
+        
+        let contentToUse = useHardcodedContent ? testContent : currentContent
+        print("[MARKDOWN DEBUG] Using \(useHardcodedContent ? "HARDCODED" : "ACTUAL") content")
+        
+        let swiftUIView = MarkdownResponseView(content: contentToUse, maxWidth: currentMaxWidth)
         
         if let existing = hostingController {
-            logger.debug("createOrUpdateHostingController() - updating existing controller")
+            print("[MARKDOWN DEBUG] createOrUpdateHostingController() - updating existing controller")
             existing.rootView = swiftUIView
             existing.view.needsLayout = true
             existing.view.layoutSubtreeIfNeeded()
         } else {
-            logger.debug("createOrUpdateHostingController() - creating new controller")
+            print("[MARKDOWN DEBUG] createOrUpdateHostingController() - creating NEW controller")
             
             let controller = NSHostingController(rootView: swiftUIView)
             
@@ -296,7 +337,7 @@ final class MarkdownHostingView: NSView {
             }
             
             controller.view.translatesAutoresizingMaskIntoConstraints = true
-            controller.view.frame = bounds
+            controller.view.frame = effectiveBounds
             controller.view.autoresizingMask = [.width, .height]
             controller.view.wantsLayer = true
             controller.view.layer?.backgroundColor = NSColor.clear.cgColor
@@ -304,7 +345,7 @@ final class MarkdownHostingView: NSView {
             addSubview(controller.view)
             self.hostingController = controller
             
-            logger.debug("createOrUpdateHostingController() - controller added, frame: \(controller.view.frame.debugDescription)")
+            print("[MARKDOWN DEBUG] createOrUpdateHostingController() - controller added, frame: \(controller.view.frame)")
         }
         
         isConfigured = true
@@ -316,7 +357,7 @@ final class MarkdownHostingView: NSView {
             controller.view.layoutSubtreeIfNeeded()
             controller.view.needsDisplay = true
             self.needsDisplay = true
-            logger.debug("createOrUpdateHostingController() - async layout complete, frame: \(controller.view.frame.debugDescription)")
+            print("[MARKDOWN DEBUG] createOrUpdateHostingController() - async layout complete, frame: \(controller.view.frame)")
         }
     }
     

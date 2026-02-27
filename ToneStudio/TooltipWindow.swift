@@ -1632,6 +1632,11 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
                 let availableWidth = width - padding * 2
                 let textHeight = msgData.textHeight
                 
+                print("[TOOLTIP DEBUG] Creating MarkdownHostingView for assistant message")
+                print("[TOOLTIP DEBUG] Frame: x=\(padding), y=\(yPos - textHeight), w=\(availableWidth), h=\(textHeight)")
+                print("[TOOLTIP DEBUG] Content length: \(message.content.count)")
+                print("[TOOLTIP DEBUG] Content preview: \(String(message.content.prefix(200)))")
+                
                 // Position from top of this message block
                 yPos -= textHeight
                 
@@ -1639,6 +1644,8 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
                 let markdownView = MarkdownHostingView(frame: NSRect(x: padding, y: yPos, width: availableWidth, height: textHeight))
                 markdownView.configure(content: message.content, maxWidth: availableWidth)
                 contentView.addSubview(markdownView)
+                
+                print("[TOOLTIP DEBUG] MarkdownHostingView added to contentView")
                 
                 yPos -= 8  // Gap between text and action buttons
                 

@@ -9,9 +9,6 @@ final class MarkdownWebView: NSView {
     private var onHeightChange: ((CGFloat) -> Void)?
     private var currentHeight: CGFloat = 50
     
-    private static var cachedTemplateHTML: String?
-    private static let resourceSubdirectory = "Resources/Markdown"
-    
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         setupWebView()
@@ -78,32 +75,11 @@ final class MarkdownWebView: NSView {
             htmlBody = "<pre style=\"white-space: pre-wrap;\">\(escaped)</pre>"
         }
         
-        let fullHTML = buildFullHTML(body: htmlBody)
-        
-        let baseURL = Bundle.main.bundleURL
-            .appendingPathComponent("Contents/Resources")
-            .appendingPathComponent("Resources")
-            .appendingPathComponent("Markdown")
-        
-        webView.loadHTMLString(fullHTML, baseURL: baseURL)
+        let fullHTML = buildHTML(body: htmlBody)
+        webView.loadHTMLString(fullHTML, baseURL: nil)
     }
     
-    private func buildFullHTML(body: String) -> String {
-        if let cached = Self.cachedTemplateHTML {
-            return cached.replacingOccurrences(of: "{{CONTENT}}", with: body)
-        }
-        
-        if let templateURL = Bundle.main.url(forResource: "template", withExtension: "html", subdirectory: "Resources/Markdown"),
-           let template = try? String(contentsOf: templateURL, encoding: .utf8) {
-            Self.cachedTemplateHTML = template
-            return template.replacingOccurrences(of: "{{CONTENT}}", with: body)
-        }
-        
-        logger.warning("Template not found, using inline fallback HTML")
-        return buildFallbackHTML(body: body)
-    }
-    
-    private func buildFallbackHTML(body: String) -> String {
+    private func buildHTML(body: String) -> String {
         return """
         <!DOCTYPE html>
         <html>
@@ -111,62 +87,224 @@ final class MarkdownWebView: NSView {
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
             <style>
-                :root { color-scheme: dark; }
+                :root {
+                    color-scheme: dark;
+                }
+                
+                * {
+                    box-sizing: border-box;
+                }
+                
                 body {
-                    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+                    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
                     font-size: 14px;
-                    line-height: 1.5;
+                    line-height: 1.55;
                     color: rgba(255, 255, 255, 0.95);
-                    background: transparent;
+                    background-color: transparent;
                     margin: 0;
                     padding: 0;
                     -webkit-font-smoothing: antialiased;
+                    -webkit-text-size-adjust: 100%;
+                    word-wrap: break-word;
+                    overflow-wrap: break-word;
                 }
-                h1, h2, h3, h4 { color: white; font-weight: 600; margin-top: 16px; margin-bottom: 8px; }
-                h1 { font-size: 1.6em; }
+                
+                #content {
+                    padding: 0;
+                }
+                
+                /* Headings */
+                h1, h2, h3, h4, h5, h6 {
+                    color: white;
+                    font-weight: 600;
+                    margin-top: 20px;
+                    margin-bottom: 10px;
+                    line-height: 1.3;
+                }
+                
+                h1:first-child, h2:first-child, h3:first-child {
+                    margin-top: 0;
+                }
+                
+                h1 { font-size: 1.5em; }
                 h2 { font-size: 1.3em; }
-                h3 { font-size: 1.1em; }
-                p { margin: 0 0 12px 0; }
-                a { color: #58a6ff; text-decoration: none; }
-                a:hover { text-decoration: underline; }
-                strong { font-weight: 600; }
+                h3 { font-size: 1.15em; }
+                h4 { font-size: 1.05em; }
+                
+                /* Paragraphs */
+                p {
+                    margin: 0 0 12px 0;
+                }
+                
+                p:last-child {
+                    margin-bottom: 0;
+                }
+                
+                /* Links */
+                a {
+                    color: #58a6ff;
+                    text-decoration: none;
+                }
+                
+                a:hover {
+                    text-decoration: underline;
+                }
+                
+                /* Bold and Italic */
+                strong, b {
+                    font-weight: 600;
+                    color: white;
+                }
+                
+                em, i {
+                    font-style: italic;
+                }
+                
+                /* Inline code */
                 code:not(pre code) {
-                    font-family: "SF Mono", Monaco, monospace;
+                    font-family: "SF Mono", Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
                     font-size: 0.88em;
-                    background: rgba(255, 255, 255, 0.1);
+                    background: rgba(255, 255, 255, 0.12);
                     padding: 2px 6px;
                     border-radius: 4px;
                     color: #e6a07c;
+                    white-space: nowrap;
                 }
+                
+                /* Code blocks - CRITICAL */
                 pre {
                     background: #141414;
                     border-radius: 8px;
-                    padding: 14px;
+                    padding: 14px 16px;
                     margin: 12px 0;
                     overflow-x: auto;
-                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    white-space: pre-wrap;
+                    word-wrap: break-word;
                 }
+                
                 pre code {
-                    font-family: "SF Mono", Monaco, monospace;
+                    font-family: "SF Mono", Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
                     font-size: 13px;
                     line-height: 1.5;
                     background: transparent;
                     padding: 0;
+                    border-radius: 0;
                     color: #e6e6e6;
+                    white-space: pre-wrap;
+                    word-wrap: break-word;
+                    display: block;
                 }
-                ul, ol { margin: 10px 0; padding-left: 24px; }
-                li { margin: 6px 0; }
+                
+                /* Basic syntax highlighting */
+                .keyword { color: #ff7b72; }
+                .string { color: #a5d6ff; }
+                .comment { color: #8b949e; }
+                .number { color: #79c0ff; }
+                .function { color: #d2a8ff; }
+                
+                /* Lists */
+                ul, ol {
+                    margin: 10px 0;
+                    padding-left: 24px;
+                }
+                
+                li {
+                    margin: 6px 0;
+                    line-height: 1.5;
+                }
+                
+                li > ul, li > ol {
+                    margin: 4px 0;
+                }
+                
+                /* Task lists */
+                input[type="checkbox"] {
+                    margin-right: 8px;
+                    accent-color: #58a6ff;
+                }
+                
+                /* Blockquotes */
                 blockquote {
                     border-left: 3px solid rgba(255, 255, 255, 0.25);
                     margin: 12px 0;
                     padding: 6px 0 6px 16px;
                     color: rgba(255, 255, 255, 0.8);
+                    background: rgba(255, 255, 255, 0.02);
+                    border-radius: 0 6px 6px 0;
                 }
-                table { border-collapse: collapse; width: 100%; margin: 12px 0; }
-                th, td { border: 1px solid rgba(255, 255, 255, 0.12); padding: 10px 14px; text-align: left; }
-                th { background: rgba(255, 255, 255, 0.06); font-weight: 600; }
-                tr:nth-child(even) { background: rgba(255, 255, 255, 0.02); }
-                hr { border: none; border-top: 1px solid rgba(255, 255, 255, 0.15); margin: 20px 0; }
+                
+                blockquote p {
+                    margin: 0;
+                }
+                
+                /* Tables */
+                table {
+                    border-collapse: collapse;
+                    width: 100%;
+                    margin: 12px 0;
+                    font-size: 13px;
+                    border-radius: 8px;
+                    overflow: hidden;
+                }
+                
+                thead {
+                    background: rgba(255, 255, 255, 0.06);
+                }
+                
+                th, td {
+                    border: 1px solid rgba(255, 255, 255, 0.12);
+                    padding: 10px 14px;
+                    text-align: left;
+                }
+                
+                th {
+                    font-weight: 600;
+                    color: white;
+                }
+                
+                tr:nth-child(even) {
+                    background: rgba(255, 255, 255, 0.02);
+                }
+                
+                /* Horizontal rule */
+                hr {
+                    border: none;
+                    border-top: 1px solid rgba(255, 255, 255, 0.15);
+                    margin: 20px 0;
+                }
+                
+                /* Images */
+                img {
+                    max-width: 100%;
+                    height: auto;
+                    border-radius: 6px;
+                }
+                
+                /* Selection styling */
+                ::selection {
+                    background: rgba(88, 166, 255, 0.3);
+                    color: white;
+                }
+                
+                /* Scrollbar styling */
+                ::-webkit-scrollbar {
+                    width: 8px;
+                    height: 8px;
+                }
+                
+                ::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                
+                ::-webkit-scrollbar-thumb {
+                    background: rgba(255, 255, 255, 0.2);
+                    border-radius: 4px;
+                }
+                
+                ::-webkit-scrollbar-thumb:hover {
+                    background: rgba(255, 255, 255, 0.3);
+                }
             </style>
         </head>
         <body>
@@ -174,7 +312,9 @@ final class MarkdownWebView: NSView {
             <script>
                 setTimeout(function() {
                     var height = document.body.scrollHeight;
-                    window.webkit.messageHandlers.heightChanged.postMessage(height);
+                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.heightChanged) {
+                        window.webkit.messageHandlers.heightChanged.postMessage(height);
+                    }
                 }, 50);
             </script>
         </body>

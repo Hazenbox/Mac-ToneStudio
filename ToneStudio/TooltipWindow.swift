@@ -1,5 +1,6 @@
 import Cocoa
 import OSLog
+import SwiftUI
 
 // MARK: - Tooltip States
 
@@ -458,9 +459,9 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     private static let bubbleCorner: CGFloat = BubbleContainerView.cornerRadius
     
     private static let optionsMenuSize = NSSize(width: 335, height: 330)
-    private static let chatWindowWidth: CGFloat = 420
-    private static let chatWindowMinHeight: CGFloat = 480
-    private static let chatWindowMaxHeight: CGFloat = 600
+    private static let chatWindowWidth: CGFloat = 480
+    private static let chatWindowMinHeight: CGFloat = 520
+    private static let chatWindowMaxHeight: CGFloat = 700
     private static let compliancePanelSize = NSSize(width: 360, height: 400)
     private static let errorWidth: CGFloat = 300
     private static let cardCornerRadius: CGFloat = 16
@@ -990,7 +991,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         
         for message in conversationMessages {
             if message.role == .assistant {
-                contentHeight += estimateTextHeight(message.content, width: Self.chatWindowWidth - Self.contentPadding * 4, fontSize: Self.messageFontSize) + 56
+                contentHeight += estimateMarkdownHeight(message.content, width: Self.chatWindowWidth - Self.contentPadding * 4) + 56
             } else if message.role == .user {
                 contentHeight += 48  // Approximate user bubble height
             }
@@ -1012,6 +1013,39 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             options: [.usesLineFragmentOrigin, .usesFontLeading]
         )
         return ceil(rect.height)
+    }
+    
+    private func estimateMarkdownHeight(_ text: String, width: CGFloat) -> CGFloat {
+        let hostingView = MarkdownHostingView()
+        hostingView.configure(content: text, maxWidth: width)
+        
+        let fittingSize = hostingView.intrinsicContentSize
+        
+        if fittingSize.height > 0 {
+            return ceil(fittingSize.height)
+        }
+        
+        let baseHeight = estimateTextHeight(text, width: width, fontSize: Self.messageFontSize)
+        var multiplier: CGFloat = 1.0
+        
+        if text.contains("```") {
+            let codeBlockCount = text.components(separatedBy: "```").count / 2
+            multiplier += CGFloat(codeBlockCount) * 0.3
+        }
+        if text.contains("# ") || text.contains("## ") || text.contains("### ") {
+            multiplier += 0.2
+        }
+        if text.contains("- ") || text.contains("* ") || text.contains("1. ") {
+            multiplier += 0.15
+        }
+        if text.contains("> ") {
+            multiplier += 0.1
+        }
+        if text.contains("|") && text.contains("-|-") {
+            multiplier += 0.25
+        }
+        
+        return ceil(baseHeight * multiplier)
     }
 
     // MARK: - Mini Icon State
@@ -1481,7 +1515,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         for message in conversationMessages {
             if message.role == .assistant {
                 let availableWidth = width - padding * 2
-                let textHeight = estimateTextHeight(message.content, width: availableWidth, fontSize: Self.messageFontSize)
+                let textHeight = estimateMarkdownHeight(message.content, width: availableWidth)
                 let messageH = textHeight + 8 + btnSize + Self.messageSpacing  // text + gap + actions + bottom spacing
                 messageHeights.append((role: .assistant, content: message.content, height: messageH, textHeight: textHeight, bubbleW: 0))
                 totalHeight += messageH
@@ -1601,16 +1635,11 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
                 // Position from top of this message block
                 yPos -= textHeight
                 
-                // AI response text (no avatar)
-                let responseLabel = NSTextField(wrappingLabelWithString: message.content)
-                responseLabel.font = .systemFont(ofSize: Self.messageFontSize)
-                responseLabel.textColor = Self.primaryText
-                responseLabel.isBezeled = false
-                responseLabel.drawsBackground = false
-                responseLabel.isEditable = false
-                responseLabel.isSelectable = true
-                responseLabel.frame = NSRect(x: padding, y: yPos, width: availableWidth, height: textHeight)
-                contentView.addSubview(responseLabel)
+                // AI response with markdown rendering
+                let markdownView = MarkdownHostingView()
+                markdownView.configure(content: message.content, maxWidth: availableWidth)
+                markdownView.frame = NSRect(x: padding, y: yPos, width: availableWidth, height: textHeight)
+                contentView.addSubview(markdownView)
                 
                 yPos -= 8  // Gap between text and action buttons
                 

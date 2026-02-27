@@ -1,5 +1,6 @@
 import Cocoa
 import OSLog
+import SwiftUI
 
 // MARK: - Editor Window
 
@@ -33,7 +34,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     private var inputTextView: NSTextView!
     private var inputScrollView: NSScrollView!
     private var generateButton: NSButton!
-    private var resultTextView: NSTextView!
+    private var resultMarkdownView: MarkdownHostingView!
     private var resultScrollView: NSScrollView!
     private var copyButton: NSButton!
     private var tryAgainButton: NSButton!
@@ -226,32 +227,20 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         resultScrollView.borderType = .noBorder
         resultScrollView.drawsBackground = false
         
-        // Result text view
-        let textStorage = NSTextStorage()
-        let layoutManager = NSLayoutManager()
-        textStorage.addLayoutManager(layoutManager)
+        // Result markdown view with flipped coordinate container
+        let flippedContainer = FlippedView(frame: NSRect(x: 0, y: 0, width: width - 24, height: Self.resultHeight - 24))
         
-        let textContainer = NSTextContainer(containerSize: NSSize(width: width - 48, height: CGFloat.greatestFiniteMagnitude))
-        textContainer.widthTracksTextView = true
-        textContainer.heightTracksTextView = false
-        layoutManager.addTextContainer(textContainer)
+        resultMarkdownView = MarkdownHostingView()
+        resultMarkdownView.frame = NSRect(x: 0, y: 0, width: width - 48, height: Self.resultHeight - 24)
+        resultMarkdownView.autoresizingMask = [.width]
+        flippedContainer.addSubview(resultMarkdownView)
         
-        resultTextView = NSTextView(frame: NSRect(x: 0, y: 0, width: width - 24, height: Self.resultHeight - 24), textContainer: textContainer)
-        resultTextView.isEditable = false
-        resultTextView.isSelectable = true
-        resultTextView.isRichText = false
-        resultTextView.font = .systemFont(ofSize: 14)
-        resultTextView.textColor = Self.textColor
-        resultTextView.backgroundColor = .clear
-        resultTextView.drawsBackground = false
-        resultTextView.isVerticallyResizable = true
-        resultTextView.isHorizontallyResizable = false
-        resultTextView.autoresizingMask = [.width]
-        resultTextView.minSize = NSSize(width: 0, height: Self.resultHeight - 24)
-        resultTextView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        
-        resultScrollView.documentView = resultTextView
+        resultScrollView.documentView = flippedContainer
         resultContainer.addSubview(resultScrollView)
+    }
+    
+    private final class FlippedView: NSView {
+        override var isFlipped: Bool { true }
     }
     
     private func setupActionButtons(at y: CGFloat, width: CGFloat, padding: CGFloat) {
@@ -379,7 +368,18 @@ final class EditorWindow: NSObject, NSWindowDelegate {
             generateButton.title = "generate"
             generateButton.isEnabled = true
             errorLabel.isHidden = true
-            resultTextView.string = text
+            
+            // Update markdown view with result
+            let availableWidth = resultScrollView.frame.width - 24
+            resultMarkdownView.configure(content: text, maxWidth: availableWidth)
+            
+            // Update scroll view document size based on markdown content height
+            let contentHeight = max(resultMarkdownView.calculatedHeight, Self.resultHeight - 24)
+            resultMarkdownView.frame.size.height = contentHeight
+            if let flippedContainer = resultScrollView.documentView {
+                flippedContainer.frame.size.height = contentHeight
+            }
+            
             resultContainer.isHidden = false
             actionButtonsStack.isHidden = false
             
@@ -468,7 +468,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         // Update result container
         resultContainer.frame.size.width = contentWidth
         resultScrollView.frame.size.width = contentWidth - 24
-        resultTextView.textContainer?.containerSize.width = contentWidth - 48
+        resultMarkdownView.frame.size.width = contentWidth - 48
     }
     
     // MARK: - Event Monitors

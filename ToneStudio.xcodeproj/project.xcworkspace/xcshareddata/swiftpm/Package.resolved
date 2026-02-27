@@ -1,5 +1,5 @@
 {
-  "originHash" : "c829ed8fee2dfbef0fa974a64d5a44e01554f72b6718737f93632d8b83d7b28a",
+  "originHash" : "1139c5b3ffede285b33fe07ade7a6d364695daf36d31ed8601b95c68b2815fdd",
   "pins" : [
     {
       "identity" : "axswift",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "d737b605c99f6e0f6a21448d0836110bd15b7710",
         "version" : "0.3.7"
+      }
+    },
+    {
+      "identity" : "highlightswift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/appstefan/HighlightSwift",
+      "state" : {
+        "revision" : "784ca3ccfc8a2cf724fbb2f06cb6ec3329424da3",
+        "version" : "1.1.0"
       }
     },
     {
@@ -38,12 +47,39 @@
       }
     },
     {
+      "identity" : "networkimage",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/gonzalezreal/NetworkImage",
+      "state" : {
+        "revision" : "2849f5323265386e200484b0d0f896e73c3411b9",
+        "version" : "6.0.1"
+      }
+    },
+    {
       "identity" : "selectedtextkit",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/tisfeng/SelectedTextKit",
       "state" : {
         "revision" : "17cdf1aa7093def4ea343cbecda1aa24dd32969c",
         "version" : "2.6.4"
+      }
+    },
+    {
+      "identity" : "swift-cmark",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-cmark",
+      "state" : {
+        "revision" : "5d9bdaa4228b381639fff09403e39a04926e2dbe",
+        "version" : "0.7.1"
+      }
+    },
+    {
+      "identity" : "swift-markdown-ui",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/gonzalezreal/swift-markdown-ui",
+      "state" : {
+        "revision" : "5f613358148239d0292c0cef674a3c2314737f9e",
+        "version" : "2.4.1"
       }
     }
   ],

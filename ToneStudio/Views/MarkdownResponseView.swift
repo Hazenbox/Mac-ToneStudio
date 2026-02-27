@@ -1,5 +1,6 @@
 import SwiftUI
 import MarkdownUI
+import AppKit
 
 struct MarkdownResponseView: View {
     let content: String
@@ -8,6 +9,7 @@ struct MarkdownResponseView: View {
     var body: some View {
         Markdown(content)
             .markdownTheme(.toneStudio)
+            .textSelection(.enabled)
             .frame(maxWidth: maxWidth, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
     }
@@ -189,60 +191,74 @@ struct ToneStudioCodeBlockView: View {
 }
 
 
-struct MarkdownResponseViewWrapper: NSViewRepresentable {
-    let content: String
-    let maxWidth: CGFloat
-    var onHeightChange: ((CGFloat) -> Void)?
-    
-    func makeNSView(context: Context) -> NSHostingView<MarkdownResponseView> {
-        let hostingView = NSHostingView(rootView: MarkdownResponseView(content: content, maxWidth: maxWidth))
-        hostingView.translatesAutoresizingMaskIntoConstraints = false
-        return hostingView
-    }
-    
-    func updateNSView(_ nsView: NSHostingView<MarkdownResponseView>, context: Context) {
-        nsView.rootView = MarkdownResponseView(content: content, maxWidth: maxWidth)
-        
-        DispatchQueue.main.async {
-            let fittingSize = nsView.fittingSize
-            onHeightChange?(fittingSize.height)
-        }
-    }
-}
-
 final class MarkdownHostingView: NSView {
-    private var hostingView: NSHostingView<MarkdownResponseView>?
+    private var hostingController: NSHostingController<AnyView>?
     private var content: String = ""
     private var maxWidth: CGFloat = 400
     
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
     var calculatedHeight: CGFloat {
-        hostingView?.fittingSize.height ?? 0
+        guard let hostingController else { return 0 }
+        let fittingSize = hostingController.view.fittingSize
+        return max(fittingSize.height, 20)
     }
     
     func configure(content: String, maxWidth: CGFloat) {
         self.content = content
         self.maxWidth = maxWidth
         
-        hostingView?.removeFromSuperview()
+        hostingController?.view.removeFromSuperview()
+        hostingController = nil
         
         let swiftUIView = MarkdownResponseView(content: content, maxWidth: maxWidth)
-        let hosting = NSHostingView(rootView: swiftUIView)
-        hosting.translatesAutoresizingMaskIntoConstraints = false
+            .environment(\.colorScheme, .dark)
         
-        addSubview(hosting)
+        let controller = NSHostingController(rootView: AnyView(swiftUIView))
+        
+        if #available(macOS 13.0, *) {
+            controller.sizingOptions = [.intrinsicContentSize]
+        }
+        
+        controller.view.translatesAutoresizingMaskIntoConstraints = false
+        controller.view.wantsLayer = true
+        controller.view.layer?.backgroundColor = NSColor.clear.cgColor
+        
+        addSubview(controller.view)
         
         NSLayoutConstraint.activate([
-            hosting.topAnchor.constraint(equalTo: topAnchor),
-            hosting.leadingAnchor.constraint(equalTo: leadingAnchor),
-            hosting.trailingAnchor.constraint(equalTo: trailingAnchor),
-            hosting.bottomAnchor.constraint(equalTo: bottomAnchor)
+            controller.view.topAnchor.constraint(equalTo: topAnchor),
+            controller.view.leadingAnchor.constraint(equalTo: leadingAnchor),
+            controller.view.trailingAnchor.constraint(equalTo: trailingAnchor),
+            controller.view.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
         
-        self.hostingView = hosting
+        self.hostingController = controller
+        
+        controller.view.needsLayout = true
+        controller.view.layoutSubtreeIfNeeded()
+        needsLayout = true
+        layoutSubtreeIfNeeded()
     }
     
     override var intrinsicContentSize: NSSize {
-        return hostingView?.fittingSize ?? NSSize(width: maxWidth, height: 0)
+        guard let hostingController else {
+            return NSSize(width: maxWidth, height: NSView.noIntrinsicMetric)
+        }
+        return hostingController.view.fittingSize
+    }
+    
+    override func invalidateIntrinsicContentSize() {
+        super.invalidateIntrinsicContentSize()
+        hostingController?.view.invalidateIntrinsicContentSize()
     }
 }
 

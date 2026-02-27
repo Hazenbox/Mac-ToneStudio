@@ -1312,7 +1312,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     }
     
     private func makeCloseButton() -> NSButton {
-        let btn = NSButton(frame: .zero)
+        let btn = HoverButton(hoverColor: NSColor.gray.withAlphaComponent(0.2), cornerRadius: 10)
         let config = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
         btn.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close")?
             .withSymbolConfiguration(config)
@@ -1513,7 +1513,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         // Empty state welcome message
         if conversationMessages.isEmpty && selectedText.isEmpty && lastAction.isEmpty && !isLoadingInline {
             let welcomeLabel = makeLabel(
-                "ask me anything — questions, content help,\nor select text to get started",
+                "Ask me anything, questions, content help, or select text to get started",
                 size: 13, weight: .regular, color: Self.secondaryText
             )
             welcomeLabel.alignment = .center

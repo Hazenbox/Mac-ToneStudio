@@ -7,9 +7,12 @@ struct MenuItemButtonStyle: ButtonStyle {
     
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(configuration.isPressed ? Color.gray.opacity(0.3) : (isHovered ? Color.gray.opacity(0.15) : Color.clear))
+                    .fill(isHovered ? Color.primary.opacity(0.1) : Color.clear)
             )
             .contentShape(Rectangle())
             .onHover { hovering in
@@ -27,16 +30,15 @@ struct MenuBarView: View {
     var onOpenEditor: (() -> Void)?
     
     private let iconLabelSpacing: CGFloat = 8
-    private let horizontalPadding: CGFloat = 6
-    private let verticalPadding: CGFloat = 6
     private let iconSize: CGFloat = 12
     private let iconContainerWidth: CGFloat = 20
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
             openToneStudioSection
             
             Divider()
+                .padding(.vertical, 4)
             
             configurationSection
             
@@ -66,14 +68,12 @@ struct MenuBarView: View {
             }
         }
         .buttonStyle(MenuItemButtonStyle())
-        .padding(.horizontal, horizontalPadding)
-        .padding(.vertical, verticalPadding)
     }
 
     // MARK: - Configuration (API Key)
 
     private var configurationSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
             if showingApiKeyInput {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("API Key")
@@ -92,8 +92,8 @@ struct MenuBarView: View {
                         .controlSize(.small)
                     }
                 }
-                .padding(.horizontal, horizontalPadding)
-                .padding(.vertical, verticalPadding)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
             } else {
                 Button {
                     apiKeyText = KeychainHelper.load() ?? ""
@@ -114,8 +114,6 @@ struct MenuBarView: View {
                     }
                 }
                 .buttonStyle(MenuItemButtonStyle())
-                .padding(.horizontal, horizontalPadding)
-                .padding(.vertical, verticalPadding)
             }
         }
     }
@@ -123,7 +121,7 @@ struct MenuBarView: View {
     // MARK: - Utilities (Grant Accessibility, Restart Monitoring, Quit)
 
     private var utilitiesSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
             if !permissionsManager.isAccessibilityGranted {
                 Button {
                     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
@@ -140,8 +138,6 @@ struct MenuBarView: View {
                 }
                 .buttonStyle(MenuItemButtonStyle())
                 .foregroundStyle(.orange)
-                .padding(.horizontal, horizontalPadding)
-                .padding(.vertical, verticalPadding)
             }
             
             Button {
@@ -156,8 +152,6 @@ struct MenuBarView: View {
                 }
             }
             .buttonStyle(MenuItemButtonStyle())
-            .padding(.horizontal, horizontalPadding)
-            .padding(.vertical, verticalPadding)
             
             Button {
                 NSApplication.shared.terminate(nil)
@@ -171,8 +165,6 @@ struct MenuBarView: View {
                 }
             }
             .buttonStyle(MenuItemButtonStyle())
-            .padding(.horizontal, horizontalPadding)
-            .padding(.vertical, verticalPadding)
         }
     }
 }

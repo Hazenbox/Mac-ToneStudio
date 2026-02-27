@@ -60,7 +60,8 @@ final class MarkdownWebView: NSView {
         
         logger.debug("Configuring MarkdownWebView with content length: \(markdown.count)")
         
-        let down = Down(markdownString: markdown)
+        let preprocessed = preprocessMarkdown(markdown)
+        let down = Down(markdownString: preprocessed)
         let htmlBody: String
         
         do {
@@ -79,6 +80,45 @@ final class MarkdownWebView: NSView {
         webView.loadHTMLString(fullHTML, baseURL: nil)
     }
     
+    private func preprocessMarkdown(_ markdown: String) -> String {
+        var result = markdown
+        
+        // Fix code fences: ensure newline after opening fence with language
+        // Pattern: ```language followed immediately by code (no newline)
+        // This handles cases like "```python def foo():" -> "```python\ndef foo():"
+        if let regex = try? NSRegularExpression(pattern: #"```(\w+)[ \t]*([^\n])"#, options: []) {
+            result = regex.stringByReplacingMatches(
+                in: result,
+                options: [],
+                range: NSRange(result.startIndex..., in: result),
+                withTemplate: "```$1\n$2"
+            )
+        }
+        
+        // Fix code fences without language: ```code -> ```\ncode
+        if let regex = try? NSRegularExpression(pattern: #"```([^`\w\n])"#, options: []) {
+            result = regex.stringByReplacingMatches(
+                in: result,
+                options: [],
+                range: NSRange(result.startIndex..., in: result),
+                withTemplate: "```\n$1"
+            )
+        }
+        
+        // Ensure content before closing ``` has a newline
+        // Pattern: non-newline character immediately followed by ```
+        if let regex = try? NSRegularExpression(pattern: #"([^\n])```"#, options: []) {
+            result = regex.stringByReplacingMatches(
+                in: result,
+                options: [],
+                range: NSRange(result.startIndex..., in: result),
+                withTemplate: "$1\n```"
+            )
+        }
+        
+        return result
+    }
+    
     private func buildHTML(body: String) -> String {
         return """
         <!DOCTYPE html>
@@ -95,6 +135,11 @@ final class MarkdownWebView: NSView {
                     box-sizing: border-box;
                 }
                 
+                html {
+                    overflow-x: hidden;
+                    max-width: 100%;
+                }
+                
                 body {
                     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
                     font-size: 14px;
@@ -107,10 +152,14 @@ final class MarkdownWebView: NSView {
                     -webkit-text-size-adjust: 100%;
                     word-wrap: break-word;
                     overflow-wrap: break-word;
+                    overflow-x: hidden;
+                    max-width: 100%;
                 }
                 
                 #content {
                     padding: 0;
+                    overflow-x: hidden;
+                    max-width: 100%;
                 }
                 
                 /* Headings */
@@ -168,7 +217,8 @@ final class MarkdownWebView: NSView {
                     padding: 2px 6px;
                     border-radius: 4px;
                     color: #e6a07c;
-                    white-space: nowrap;
+                    white-space: normal;
+                    word-break: break-word;
                 }
                 
                 /* Code blocks - CRITICAL */
@@ -177,10 +227,12 @@ final class MarkdownWebView: NSView {
                     border-radius: 8px;
                     padding: 14px 16px;
                     margin: 12px 0;
-                    overflow-x: auto;
+                    overflow-x: hidden;
                     border: 1px solid rgba(255, 255, 255, 0.1);
                     white-space: pre-wrap;
                     word-wrap: break-word;
+                    word-break: break-word;
+                    max-width: 100%;
                 }
                 
                 pre code {
@@ -193,7 +245,9 @@ final class MarkdownWebView: NSView {
                     color: #e6e6e6;
                     white-space: pre-wrap;
                     word-wrap: break-word;
+                    word-break: break-word;
                     display: block;
+                    max-width: 100%;
                 }
                 
                 /* Basic syntax highlighting */

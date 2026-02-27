@@ -117,7 +117,7 @@
 				63137D142F4D000000C41B2E /* XCRemoteSwiftPackageReference "SelectedTextKit" */,
 				63137D162F4D000100C41B2E /* XCRemoteSwiftPackageReference "HotKey" */,
 				63137D1A2F50000100C41B2E /* XCRemoteSwiftPackageReference "HighlightSwift" */,
-				63137D1E2F60000000C41B2E /* XCRemoteSwiftPackageReference "Down" */,
+				63137D1E2F60000000C41B2E /* XCRemoteSwiftPackageReference "Down-gfm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 63137CFE2F487ECB00C41B2E /* Products */;
@@ -386,7 +386,7 @@
 				minimumVersion = 1.0.0;
 			};
 		};
-		63137D1E2F60000000C41B2E /* XCRemoteSwiftPackageReference "Down" */ = {
+		63137D1E2F60000000C41B2E /* XCRemoteSwiftPackageReference "Down-gfm" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/stackotter/Down-gfm";
 			requirement = {
@@ -419,7 +419,7 @@
 		};
 		63137D212F60000000C41B2E /* Down */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 63137D1E2F60000000C41B2E /* XCRemoteSwiftPackageReference "Down" */;
+			package = 63137D1E2F60000000C41B2E /* XCRemoteSwiftPackageReference "Down-gfm" */;
 			productName = Down;
 		};
 /* End XCSwiftPackageProductDependency section */

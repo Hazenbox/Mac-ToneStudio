@@ -433,8 +433,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     // MARK: - UI References
     private var inputField: NSTextField?
     private var quickActionsInputField: NSTextField?
-    private var chatScrollView: NSScrollView?
-    private var chatContentView: NSView?
+    private var chatWebView: ChatWebView?
     private var inlineSpinner: NSProgressIndicator?
     private var fabCloseButton: NSButton?
     private var fabTrackingArea: NSTrackingArea?
@@ -466,16 +465,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     private static let errorWidth: CGFloat = 300
     private static let cardCornerRadius: CGFloat = 16
     private static let innerCornerRadius: CGFloat = 11
-    private static let pillCornerRadius: CGFloat = 21
     private static let fabSize: CGFloat = 48
-    private static let userBubbleMaxWidthRatio: CGFloat = 0.8
-    private static let selectedTextContainerH: CGFloat = 42
-    
-    // User bubble styling constants
-    private static let userBubblePaddingH: CGFloat = 16
-    private static let userBubblePaddingV: CGFloat = 10
-    private static let userBubbleMinWidth: CGFloat = 72
-    private static let userBubbleMinTextWidth: CGFloat = 48
     
     // Typography constants
     private static let messageFontSize: CGFloat = 14
@@ -484,7 +474,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     
     // Spacing constants
     private static let contentPadding: CGFloat = 12
-    private static let messageSpacing: CGFloat = 16
 
     // MARK: - Colors (Figma specs)
     private static let darkBubbleBG  = NSColor(red: 0.17, green: 0.17, blue: 0.19, alpha: 1)
@@ -1487,32 +1476,38 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         containerView.addSubview(textField)
         inputField = textField
         
-        // Content area between header and input
+        // Content area between header and input - now uses single ChatWebView
         let contentTopY: CGFloat = inputPanelY + inputPanelH + Self.contentPadding
         let contentBottomY: CGFloat = height - 44  // Header area
         let contentH = contentBottomY - contentTopY
         
-        let scrollView = NSScrollView(frame: NSRect(x: 0, y: contentTopY, width: width, height: contentH))
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.borderType = .noBorder
-        scrollView.backgroundColor = .clear
-        scrollView.drawsBackground = false
-        scrollView.autohidesScrollers = true
+        let webView = ChatWebView(frame: NSRect(x: 0, y: contentTopY, width: width, height: contentH))
+        webView.delegate = self
         
-        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: width, height: contentH))
-        contentView.wantsLayer = true
+        // Convert conversation messages to the format ChatWebView expects
+        let messages: [(role: String, content: String)] = conversationMessages.compactMap { msg in
+            switch msg.role {
+            case .user:
+                return (role: "user", content: msg.content)
+            case .assistant:
+                return (role: "assistant", content: msg.content)
+            case .action:
+                return nil
+            }
+        }
         
-        buildChatContentInView(contentView, width: width, availableHeight: contentH)
+        webView.updateChat(
+            messages: messages,
+            selectedText: selectedText,
+            lastAction: lastAction,
+            isLoading: isLoadingInline
+        )
         
-        scrollView.documentView = contentView
-        containerView.addSubview(scrollView)
-        chatScrollView = scrollView
-        chatContentView = contentView
+        containerView.addSubview(webView)
+        chatWebView = webView
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             guard let self else { return }
-            self.scrollToBottom()
             // Focus input field when chat window is shown
             if let field = self.inputField, field.isEnabled {
                 self.panel.allowsKeyStatus = true
@@ -1521,259 +1516,32 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         }
     }
     
-    private func buildChatContentInView(_ contentView: NSView, width: CGFloat, availableHeight: CGFloat) {
-        let padding: CGFloat = 7
-        let btnSize: CGFloat = 18
-        let btnSpacing: CGFloat = 6
-        
-        // STEP 1: Calculate total content height first (top-down visual order)
-        var totalHeight: CGFloat = 8  // Top padding
-        
-        // Selected text container height
-        let selectedTextH: CGFloat = selectedText.isEmpty ? 0 : Self.selectedTextContainerH + 12
-        totalHeight += selectedTextH
-        
-        // Action pill height (first user action like "Rephrase with Jio Voice and Tone")
-        let actionPillH: CGFloat = lastAction.isEmpty ? 0 : 36 + 12
-        totalHeight += actionPillH
-        
-        // Calculate heights for all conversation messages
-        var messageHeights: [(role: ChatMessage.Role, content: String, height: CGFloat, textHeight: CGFloat, bubbleW: CGFloat)] = []
-        
-        for message in conversationMessages {
-            if message.role == .assistant {
-                let availableWidth = width - padding * 2
-                let textHeight = estimateMarkdownHeight(message.content, width: availableWidth)
-                let messageH = textHeight + 8 + btnSize + Self.messageSpacing  // text + gap + actions + bottom spacing
-                messageHeights.append((role: .assistant, content: message.content, height: messageH, textHeight: textHeight, bubbleW: 0))
-                totalHeight += messageH
-            } else if message.role == .user {
-                // User messages as right-aligned pill bubbles
-                let maxBubbleWidth = (width - padding * 2) * Self.userBubbleMaxWidthRatio
-                let naturalWidth = estimateTextWidth(message.content, fontSize: Self.messageFontSize)
-                let textWidth = max(min(naturalWidth, maxBubbleWidth - Self.userBubblePaddingH * 2), Self.userBubbleMinTextWidth)
-                let textHeight = estimateTextHeight(message.content, width: textWidth, fontSize: Self.messageFontSize)
-                let bubbleW = max(textWidth + Self.userBubblePaddingH * 2, Self.userBubbleMinWidth)
-                let bubbleH = textHeight + Self.userBubblePaddingV * 2
-                messageHeights.append((role: .user, content: message.content, height: bubbleH + Self.messageSpacing, textHeight: textHeight, bubbleW: bubbleW))
-                totalHeight += bubbleH + Self.messageSpacing
-            }
-        }
-        
-        // Loading indicator height
-        let loadingH: CGFloat = isLoadingInline ? 24 + 12 : 0
-        totalHeight += loadingH
-        
-        totalHeight += 10  // Bottom padding
-        
-        // Ensure minimum height
-        let contentHeight = max(totalHeight, availableHeight)
-        contentView.frame = NSRect(x: 0, y: 0, width: width, height: contentHeight)
-        
-        // STEP 2: Position elements from TOP (high y) to BOTTOM (low y)
-        // In AppKit, y=0 is at the bottom, so we start from contentHeight and work downward
-        var yPos: CGFloat = contentHeight - 8  // Start from top with padding
-        
-        // Empty state welcome message
-        if conversationMessages.isEmpty && selectedText.isEmpty && lastAction.isEmpty && !isLoadingInline {
-            let welcomeLabel = makeLabel(
-                "Ask me anything, questions, content help, or select text to get started",
-                size: 13, weight: .regular, color: Self.secondaryText
-            )
-            welcomeLabel.alignment = .center
-            welcomeLabel.maximumNumberOfLines = 2
-            welcomeLabel.frame = NSRect(x: padding, y: (contentHeight - 40) / 2, width: width - padding * 2, height: 40)
-            contentView.addSubview(welcomeLabel)
-            return
-        }
-        
-        // Selected text in dark container at TOP
-        if !selectedText.isEmpty {
-            let containerH = Self.selectedTextContainerH
-            let containerW = width - padding * 2
-            yPos -= containerH
-            
-            let selectedContainer = NSView(frame: NSRect(x: padding, y: yPos, width: containerW, height: containerH))
-            selectedContainer.wantsLayer = true
-            selectedContainer.layer?.backgroundColor = Self.innerPanelBG.cgColor
-            selectedContainer.layer?.cornerRadius = Self.innerCornerRadius
-            contentView.addSubview(selectedContainer)
-            
-            // Document icon inside container
-            let docIcon = NSImageView(frame: NSRect(x: 10, y: (containerH - 16) / 2, width: 16, height: 16))
-            let docConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
-            docIcon.image = NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)?.withSymbolConfiguration(docConfig)
-            docIcon.contentTintColor = Self.primaryText
-            selectedContainer.addSubview(docIcon)
-            
-            // Selected text label (truncated, reduced width for close button)
-            let truncatedText = selectedText.count > 30 ? String(selectedText.prefix(30)) + "..." : selectedText
-            let selectedLabel = makeLabel("Selected text: \(truncatedText)", size: 12, weight: .regular, color: Self.primaryText)
-            selectedLabel.frame = NSRect(x: 30, y: (containerH - 14) / 2, width: containerW - 60, height: 14)
-            selectedContainer.addSubview(selectedLabel)
-            
-            // Close button to discard selected text
-            let closeBtnChat = NSButton(frame: NSRect(
-                x: containerW - 10 - 16,
-                y: (containerH - 16) / 2,
-                width: 16,
-                height: 16
-            ))
-            let closeChatConfig = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
-            closeBtnChat.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Clear selected text")?
-                .withSymbolConfiguration(closeChatConfig)
-            closeBtnChat.isBordered = false
-            closeBtnChat.bezelStyle = .inline
-            closeBtnChat.contentTintColor = Self.secondaryText
-            closeBtnChat.target = self
-            closeBtnChat.action = #selector(clearSelectedTextTapped)
-            selectedContainer.addSubview(closeBtnChat)
-            
-            yPos -= 12  // Gap below selected text
-        }
-        
-        // Action pill (first user action) - RIGHT ALIGNED
-        if !lastAction.isEmpty {
-            let pillWidth = estimatePillWidth(lastAction)
-            let pillH: CGFloat = 40  // Increased height for better proportions
-            let pillX = width - padding - pillWidth  // Right-aligned
-            yPos -= pillH
-            
-            let pillBG = NSView(frame: NSRect(x: pillX, y: yPos, width: pillWidth, height: pillH))
-            pillBG.wantsLayer = true
-            pillBG.layer?.backgroundColor = Self.actionPillBG.cgColor
-            pillBG.layer?.cornerRadius = pillH / 2  // Perfect pill shape (half height)
-            contentView.addSubview(pillBG)
-            
-            let pillLabel = makeLabel(lastAction, size: Self.messageFontSize, weight: .regular, color: Self.primaryText)
-            pillLabel.frame = NSRect(x: Self.userBubblePaddingH, y: (pillH - 16) / 2, width: pillWidth - Self.userBubblePaddingH * 2, height: 16)
-            pillBG.addSubview(pillLabel)
-            
-            yPos -= Self.messageSpacing  // Gap below action pill
-        }
-        
-        // Conversation messages in chronological order (oldest first, newest at bottom)
-        for (index, msgData) in messageHeights.enumerated() {
-            let message = conversationMessages[index]
-            
-            if msgData.role == .assistant {
-                let availableWidth = width - padding * 2
-                let textHeight = msgData.textHeight
-                
-                yPos -= textHeight
-                
-                let markdownView = MarkdownWebView(frame: NSRect(x: padding, y: yPos, width: availableWidth, height: textHeight))
-                markdownView.configure(markdown: message.content)
-                contentView.addSubview(markdownView)
-                
-                yPos -= 8  // Gap between text and action buttons
-                
-                // Action icons row BELOW the text
-                yPos -= btnSize
-                var btnX: CGFloat = padding
-                
-                let copyBtn = makeSmallIconButton(symbolName: "doc.on.doc", action: #selector(copyTapped))
-                copyBtn.frame = NSRect(x: btnX, y: yPos, width: btnSize, height: btnSize)
-                contentView.addSubview(copyBtn)
-                btnX += btnSize + btnSpacing
-                
-                let refreshBtn = makeSmallIconButton(symbolName: "arrow.clockwise", action: #selector(regenerateTapped))
-                refreshBtn.frame = NSRect(x: btnX, y: yPos, width: btnSize, height: btnSize)
-                contentView.addSubview(refreshBtn)
-                btnX += btnSize + btnSpacing
-                
-                let likeBtn = makeSmallIconButton(symbolName: "hand.thumbsup", action: #selector(likeTapped))
-                likeBtn.frame = NSRect(x: btnX, y: yPos, width: btnSize, height: btnSize)
-                contentView.addSubview(likeBtn)
-                btnX += btnSize + btnSpacing
-                
-                let dislikeBtn = makeSmallIconButton(symbolName: "hand.thumbsdown", action: #selector(dislikeTapped))
-                dislikeBtn.frame = NSRect(x: btnX, y: yPos, width: btnSize, height: btnSize)
-                contentView.addSubview(dislikeBtn)
-                
-                yPos -= Self.messageSpacing  // Bottom spacing for this message block
-                
-            } else if msgData.role == .user {
-                // User messages as right-aligned pill bubbles
-                let textHeight = msgData.textHeight
-                let bubbleW = msgData.bubbleW
-                let bubbleH = textHeight + Self.userBubblePaddingV * 2
-                let bubbleX = width - padding - bubbleW  // Right-aligned
-                
-                yPos -= bubbleH
-                
-                // Bubble background - pill for single line, rounded for multi-line
-                let bubbleBG = NSView(frame: NSRect(x: bubbleX, y: yPos, width: bubbleW, height: bubbleH))
-                bubbleBG.wantsLayer = true
-                bubbleBG.layer?.backgroundColor = Self.actionPillBG.cgColor
-                // Use pill shape (half height radius) for single-line text, rounded corners for multi-line
-                let isSingleLine = textHeight <= 22  // Approximate single line at 14pt font
-                bubbleBG.layer?.cornerRadius = isSingleLine ? bubbleH / 2 : 16
-                contentView.addSubview(bubbleBG)
-                
-                // User message text inside bubble - centered vertically
-                let labelWidth = bubbleW - Self.userBubblePaddingH * 2
-                let userLabel = NSTextField(wrappingLabelWithString: message.content)
-                userLabel.font = .systemFont(ofSize: Self.messageFontSize)
-                userLabel.textColor = Self.primaryText
-                userLabel.isBezeled = false
-                userLabel.drawsBackground = false
-                userLabel.isEditable = false
-                userLabel.isSelectable = true
-                userLabel.lineBreakMode = .byWordWrapping
-                userLabel.cell?.wraps = true
-                userLabel.cell?.isScrollable = false
-                // Center text vertically within bubble
-                let textY = (bubbleH - textHeight) / 2
-                userLabel.frame = NSRect(x: Self.userBubblePaddingH, y: textY, width: labelWidth, height: textHeight)
-                bubbleBG.addSubview(userLabel)
-                
-                yPos -= Self.messageSpacing  // Gap below user bubble
-            }
-        }
-        
-        // Loading indicator at the bottom (newest position)
-        if isLoadingInline {
-            let indicatorH: CGFloat = 24
-            yPos -= indicatorH
-            
-            // Animated typing dots (no avatar)
-            let typingIndicator = TypingIndicatorView(color: Self.secondaryText)
-            typingIndicator.frame = NSRect(x: padding, y: yPos + 9, width: typingIndicator.frame.width, height: typingIndicator.frame.height)
-            typingIndicator.startAnimating()
-            contentView.addSubview(typingIndicator)
-        }
-    }
     
     private func rebuildChatContent() {
-        guard let scrollView = chatScrollView, let contentView = chatContentView else { return }
+        guard let webView = chatWebView else { return }
         
-        contentView.subviews.forEach { $0.removeFromSuperview() }
+        // Convert conversation messages to the format ChatWebView expects
+        let messages: [(role: String, content: String)] = conversationMessages.compactMap { msg in
+            switch msg.role {
+            case .user:
+                return (role: "user", content: msg.content)
+            case .assistant:
+                return (role: "assistant", content: msg.content)
+            case .action:
+                return nil
+            }
+        }
         
-        let width = scrollView.frame.width
-        let availableHeight = scrollView.frame.height
-        buildChatContentInView(contentView, width: width, availableHeight: availableHeight)
-        
-        scrollToBottom()
+        webView.updateChat(
+            messages: messages,
+            selectedText: selectedText,
+            lastAction: lastAction,
+            isLoading: isLoadingInline
+        )
     }
     
     private func scrollToBottom() {
-        guard let scrollView = chatScrollView else { return }
-        // Scroll to y=0 to show the bottom content (newest messages)
-        // Since we build from top (high y) to bottom (low y), y=0 shows the most recent
-        scrollView.contentView.scroll(to: NSPoint(x: 0, y: 0))
-    }
-    
-    private func estimatePillWidth(_ text: String) -> CGFloat {
-        let attr = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: Self.messageFontSize, weight: .medium)])
-        let rect = attr.boundingRect(with: NSSize(width: CGFloat.greatestFiniteMagnitude, height: 24), options: [.usesLineFragmentOrigin])
-        return ceil(rect.width) + Self.userBubblePaddingH * 2 + 8  // Padding for pill shape
-    }
-    
-    private func estimateTextWidth(_ text: String, fontSize: CGFloat) -> CGFloat {
-        let attr = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: fontSize)])
-        let rect = attr.boundingRect(with: NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude), options: [.usesLineFragmentOrigin])
-        return ceil(rect.width)
+        chatWebView?.scrollToBottom()
     }
 
     // MARK: - Compliance Panel State
@@ -1988,8 +1756,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         containerView.subviews.forEach { $0.removeFromSuperview() }
         containerView.layer?.sublayers?.forEach { $0.removeFromSuperlayer() }
         inputField = nil
-        chatScrollView = nil
-        chatContentView = nil
+        chatWebView = nil
         inlineSpinner = nil
     }
 
@@ -2056,24 +1823,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         btn.action = action
         btn.contentTintColor = NSColor(white: 0.7, alpha: 1)
         btn.imageScaling = .scaleProportionallyDown
-        return btn
-    }
-    
-    private func makeSmallIconButton(symbolName: String, action: Selector) -> HoverButton {
-        let btn = HoverButton(hoverColor: NSColor.white.withAlphaComponent(0.1), cornerRadius: 4)
-        let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
-        btn.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
-            .withSymbolConfiguration(config)
-        btn.isBordered = false
-        btn.bezelStyle = .shadowlessSquare
-        btn.target = self
-        btn.action = action
-        btn.contentTintColor = NSColor(white: 0.5, alpha: 1)
-        btn.imageScaling = .scaleProportionallyDown
-        btn.toolTip = symbolName == "doc.on.doc" ? "Copy" :
-                      symbolName == "arrow.clockwise" ? "Regenerate" :
-                      symbolName == "hand.thumbsup" ? "Good response" :
-                      symbolName == "hand.thumbsdown" ? "Bad response" : nil
         return btn
     }
 
@@ -2296,10 +2045,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         }
     }
     
-    @objc private func copyTapped() {
-        onCopy?(lastResponse)
-    }
-    
     @objc private func cancelTapped() {
         hide()
         onCancel?()
@@ -2405,17 +2150,35 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         enableInput()
         focusInputField()
     }
-    
-    @objc private func regenerateTapped() {
-        onRegenerate?()
+}
+
+// MARK: - ChatWebViewDelegate
+
+extension TooltipWindow: ChatWebViewDelegate {
+    func chatWebView(_ view: ChatWebView, didClickAction action: String, forMessageAt index: Int) {
+        switch action {
+        case "copy":
+            if index < conversationMessages.count {
+                let content = conversationMessages[index].content
+                onCopy?(content)
+            } else {
+                onCopy?(lastResponse)
+            }
+        case "regenerate":
+            onRegenerate?()
+        case "like":
+            onFeedback?("thumbs_up", lastResponse)
+        case "dislike":
+            onFeedback?("thumbs_down", lastResponse)
+        default:
+            break
+        }
     }
     
-    @objc private func likeTapped() {
-        onFeedback?("thumbs_up", lastResponse)
-    }
-    
-    @objc private func dislikeTapped() {
-        onFeedback?("thumbs_down", lastResponse)
+    func chatWebViewDidClickClearSelectedText(_ view: ChatWebView) {
+        selectedText = ""
+        onClearSelectedText?()
+        rebuildChatContent()
     }
 }
 

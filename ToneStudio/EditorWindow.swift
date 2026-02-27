@@ -227,20 +227,12 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         resultScrollView.borderType = .noBorder
         resultScrollView.drawsBackground = false
         
-        // Result markdown view with flipped coordinate container
-        let flippedContainer = FlippedView(frame: NSRect(x: 0, y: 0, width: width - 24, height: Self.resultHeight - 24))
-        
-        resultMarkdownView = MarkdownHostingView()
-        resultMarkdownView.frame = NSRect(x: 0, y: 0, width: width - 48, height: Self.resultHeight - 24)
+        // Result markdown view - directly as document view without FlippedView wrapper
+        resultMarkdownView = MarkdownHostingView(frame: NSRect(x: 0, y: 0, width: width - 48, height: Self.resultHeight - 24))
         resultMarkdownView.autoresizingMask = [.width]
-        flippedContainer.addSubview(resultMarkdownView)
         
-        resultScrollView.documentView = flippedContainer
+        resultScrollView.documentView = resultMarkdownView
         resultContainer.addSubview(resultScrollView)
-    }
-    
-    private final class FlippedView: NSView {
-        override var isFlipped: Bool { true }
     }
     
     private func setupActionButtons(at y: CGFloat, width: CGFloat, padding: CGFloat) {
@@ -374,10 +366,10 @@ final class EditorWindow: NSObject, NSWindowDelegate {
             resultMarkdownView.configure(content: text, maxWidth: availableWidth)
             
             // Update scroll view document size based on markdown content height
-            let contentHeight = max(resultMarkdownView.calculatedHeight, Self.resultHeight - 24)
-            resultMarkdownView.frame.size.height = contentHeight
-            if let flippedContainer = resultScrollView.documentView {
-                flippedContainer.frame.size.height = contentHeight
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                guard let self = self else { return }
+                let contentHeight = max(self.resultMarkdownView.calculatedHeight, Self.resultHeight - 24)
+                self.resultMarkdownView.frame.size.height = contentHeight
             }
             
             resultContainer.isHidden = false

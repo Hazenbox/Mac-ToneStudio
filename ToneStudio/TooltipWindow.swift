@@ -1635,10 +1635,9 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
                 // Position from top of this message block
                 yPos -= textHeight
                 
-                // AI response with markdown rendering
-                let markdownView = MarkdownHostingView()
+                // AI response with markdown rendering - set frame in init BEFORE configure
+                let markdownView = MarkdownHostingView(frame: NSRect(x: padding, y: yPos, width: availableWidth, height: textHeight))
                 markdownView.configure(content: message.content, maxWidth: availableWidth)
-                markdownView.frame = NSRect(x: padding, y: yPos, width: availableWidth, height: textHeight)
                 contentView.addSubview(markdownView)
                 
                 yPos -= 8  // Gap between text and action buttons

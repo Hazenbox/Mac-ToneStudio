@@ -207,9 +207,10 @@ final class MarkdownHostingView: NSView {
     }
     
     var calculatedHeight: CGFloat {
-        guard let hostingController else { return 0 }
+        guard let hostingController else { return 100 }
+        hostingController.view.layoutSubtreeIfNeeded()
         let fittingSize = hostingController.view.fittingSize
-        return max(fittingSize.height, 20)
+        return max(fittingSize.height, 50)
     }
     
     func configure(content: String, maxWidth: CGFloat) {
@@ -225,28 +226,45 @@ final class MarkdownHostingView: NSView {
         let controller = NSHostingController(rootView: AnyView(swiftUIView))
         
         if #available(macOS 13.0, *) {
-            controller.sizingOptions = [.intrinsicContentSize]
+            controller.sizingOptions = []
         }
         
-        controller.view.translatesAutoresizingMaskIntoConstraints = false
+        controller.view.translatesAutoresizingMaskIntoConstraints = true
+        controller.view.frame = bounds
+        controller.view.autoresizingMask = [.width, .height]
         controller.view.wantsLayer = true
         controller.view.layer?.backgroundColor = NSColor.clear.cgColor
         
         addSubview(controller.view)
-        
-        NSLayoutConstraint.activate([
-            controller.view.topAnchor.constraint(equalTo: topAnchor),
-            controller.view.leadingAnchor.constraint(equalTo: leadingAnchor),
-            controller.view.trailingAnchor.constraint(equalTo: trailingAnchor),
-            controller.view.bottomAnchor.constraint(equalTo: bottomAnchor)
-        ])
-        
         self.hostingController = controller
         
-        controller.view.needsLayout = true
-        controller.view.layoutSubtreeIfNeeded()
-        needsLayout = true
-        layoutSubtreeIfNeeded()
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let controller = self.hostingController else { return }
+            controller.view.frame = self.bounds
+            controller.view.needsLayout = true
+            controller.view.layoutSubtreeIfNeeded()
+            controller.view.needsDisplay = true
+            self.needsDisplay = true
+        }
+    }
+    
+    override func layout() {
+        super.layout()
+        hostingController?.view.frame = bounds
+    }
+    
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self, let controller = self.hostingController else { return }
+                controller.view.frame = self.bounds
+                controller.view.needsLayout = true
+                controller.view.layoutSubtreeIfNeeded()
+                controller.view.needsDisplay = true
+                self.needsDisplay = true
+            }
+        }
     }
     
     override var intrinsicContentSize: NSSize {
@@ -254,11 +272,6 @@ final class MarkdownHostingView: NSView {
             return NSSize(width: maxWidth, height: NSView.noIntrinsicMetric)
         }
         return hostingController.view.fittingSize
-    }
-    
-    override func invalidateIntrinsicContentSize() {
-        super.invalidateIntrinsicContentSize()
-        hostingController?.view.invalidateIntrinsicContentSize()
     }
 }
 

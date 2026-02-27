@@ -413,7 +413,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     var onCustomPrompt: ((String) -> Void)?
     var onFeedback: ((String, String) -> Void)?
     var onRegenerate: (() -> Void)?
-    var onQuickFix: (() -> Void)?
     var onClearSelectedText: (() -> Void)?
 
     // MARK: - Panel
@@ -1141,21 +1140,26 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         cardLayer.cornerRadius = Self.cardCornerRadius
         containerView.layer?.addSublayer(cardLayer)
         
-        // Header: y=9 from top
-        let logoSize: CGFloat = 28
+        // Header: y=9 from top - centered logo and title
+        let logoSize: CGFloat = 32
         let headerY = height - 9 - logoSize
+        let titleText = "Tone Studio"
+        let titleWidth: CGFloat = 90
+        let logoTitleSpacing: CGFloat = 8
+        let totalContentWidth = logoSize + logoTitleSpacing + titleWidth
+        let contentStartX = (width - totalContentWidth) / 2
         
-        // Product logo: 28x28 at x:9
+        // Product logo: 32x32, centered
         let avatar = makeAvatarImageView(size: logoSize)
-        avatar.frame = NSRect(x: 9, y: headerY, width: logoSize, height: logoSize)
+        avatar.frame = NSRect(x: contentStartX, y: headerY, width: logoSize, height: logoSize)
         containerView.addSubview(avatar)
         
-        // Title "Tone Studio"
-        let titleLabel = makeLabel("Tone Studio", size: 13, weight: .medium, color: Self.titleText)
-        titleLabel.frame = NSRect(x: 9 + logoSize + 8, y: headerY + (logoSize - 16) / 2, width: 200, height: 16)
+        // Title "Tone Studio" - centered next to logo
+        let titleLabel = makeLabel(titleText, size: 14, weight: .medium, color: Self.titleText)
+        titleLabel.frame = NSRect(x: contentStartX + logoSize + logoTitleSpacing, y: headerY + (logoSize - 18) / 2, width: titleWidth, height: 18)
         containerView.addSubview(titleLabel)
         
-        // Close button (X)
+        // Close button (X) - stays at right edge
         let closeBtn = makeCloseButton()
         closeBtn.frame = NSRect(x: width - 16 - 14, y: headerY + (logoSize - 16) / 2, width: 16, height: 16)
         containerView.addSubview(closeBtn)
@@ -1203,44 +1207,8 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         )
         containerView.addSubview(rephraseBtn)
         
-        // Quick Fix button above rephrase
-        let quickFixY = rephraseY + buttonH + buttonSpacing
-        let quickFixBtn = makeOptionButton(
-            title: "Quick Fix",
-            frame: NSRect(x: padding, y: quickFixY, width: buttonWidth, height: buttonH),
-            action: #selector(quickFixOptionTapped),
-            enabled: hasText
-        )
-        containerView.addSubview(quickFixBtn)
-        
-        // Quick fix badge (shows auto-fix count)
-        let quickFixBadge = NSView(frame: NSRect(x: buttonWidth - 50, y: (buttonH - 20) / 2, width: 40, height: 20))
-        quickFixBadge.wantsLayer = true
-        quickFixBadge.layer?.cornerRadius = 10
-        quickFixBadge.layer?.backgroundColor = NSColor.systemBlue.cgColor
-        quickFixBadge.isHidden = true
-        quickFixBtn.addSubview(quickFixBadge)
-        
-        // Start async auto-fix count only if text exists
-        if hasText {
-            Task { [weak self] in
-                guard let self = self else { return }
-                let count = await AutoFixService.shared.getFixCount(for: self.selectedText)
-                await MainActor.run {
-                    if count > 0 {
-                        quickFixBadge.isHidden = false
-                        quickFixBadge.subviews.forEach { $0.removeFromSuperview() }
-                        let countLabel = self.makeLabel("\(count)", size: 11, weight: .semibold, color: .white)
-                        countLabel.alignment = .center
-                        countLabel.frame = NSRect(x: 0, y: 2, width: 40, height: 16)
-                        quickFixBadge.addSubview(countLabel)
-                    }
-                }
-            }
-        }
-        
         // Input panel above buttons - increased height for better spacing
-        let inputPanelY = quickFixY + buttonH + 12
+        let inputPanelY = rephraseY + buttonH + 12
         let inputPanelH: CGFloat = height - inputPanelY - 33 - 8  // Leave room for header
         let inputPanel = NSView(frame: NSRect(x: padding, y: inputPanelY, width: buttonWidth, height: inputPanelH))
         inputPanel.wantsLayer = true
@@ -1400,21 +1368,26 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         cardLayer.cornerRadius = Self.cardCornerRadius
         containerView.layer?.addSublayer(cardLayer)
         
-        // Header with more breathing room
-        let logoSize: CGFloat = 32
+        // Header with more breathing room - centered logo and title
+        let logoSize: CGFloat = 36
         let headerY = height - Self.contentPadding - logoSize
+        let titleText = "Tone Studio"
+        let titleWidth: CGFloat = 100
+        let logoTitleSpacing: CGFloat = 10
+        let totalContentWidth = logoSize + logoTitleSpacing + titleWidth
+        let contentStartX = (width - totalContentWidth) / 2
         
-        // Product logo
+        // Product logo - centered
         let avatar = makeAvatarImageView(size: logoSize)
-        avatar.frame = NSRect(x: Self.contentPadding, y: headerY, width: logoSize, height: logoSize)
+        avatar.frame = NSRect(x: contentStartX, y: headerY, width: logoSize, height: logoSize)
         containerView.addSubview(avatar)
         
-        // Title with larger font
-        let titleLabel = makeLabel("Tone Studio", size: Self.titleFontSize, weight: .medium, color: Self.titleText)
-        titleLabel.frame = NSRect(x: Self.contentPadding + logoSize + 10, y: headerY + (logoSize - 18) / 2, width: 200, height: 18)
+        // Title with larger font - centered next to logo
+        let titleLabel = makeLabel(titleText, size: Self.titleFontSize, weight: .medium, color: Self.titleText)
+        titleLabel.frame = NSRect(x: contentStartX + logoSize + logoTitleSpacing, y: headerY + (logoSize - 20) / 2, width: titleWidth, height: 20)
         containerView.addSubview(titleLabel)
         
-        // Close button
+        // Close button - stays at right edge
         let closeBtn = makeCloseButton()
         closeBtn.frame = NSRect(x: width - 16 - Self.contentPadding, y: headerY + (logoSize - 16) / 2, width: 16, height: 16)
         containerView.addSubview(closeBtn)
@@ -1887,25 +1860,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         buildSummaryStatCompact(in: summaryBG, at: 0, value: result.errorCount, label: "errors", color: result.errorCount > 0 ? NSColor.systemRed : Self.secondaryText, width: statWidth)
         buildSummaryStatCompact(in: summaryBG, at: statWidth, value: result.warningCount, label: "warnings", color: result.warningCount > 0 ? NSColor.systemOrange : Self.secondaryText, width: statWidth)
         buildSummaryStatCompact(in: summaryBG, at: statWidth * 2, value: result.autoFixableCount, label: "fixable", color: result.autoFixableCount > 0 ? NSColor.systemGreen : Self.secondaryText, width: statWidth)
-        
-        // Quick Fix button (if applicable)
-        if result.autoFixableCount > 0 {
-            let btnY: CGFloat = 12
-            let btnHeight: CGFloat = 36
-            let btnWidth: CGFloat = width - padding * 2
-            
-            let fixBtn = NSButton(frame: NSRect(x: padding, y: btnY, width: btnWidth, height: btnHeight))
-            fixBtn.title = "quick fix (\(result.autoFixableCount))"
-            fixBtn.bezelStyle = .rounded
-            fixBtn.isBordered = true
-            fixBtn.wantsLayer = true
-            fixBtn.layer?.cornerRadius = btnHeight / 2
-            fixBtn.layer?.backgroundColor = NSColor.systemBlue.cgColor
-            fixBtn.contentTintColor = .white
-            fixBtn.target = self
-            fixBtn.action = #selector(quickFixTapped)
-            containerView.addSubview(fixBtn)
-        }
     }
     
     private func buildViolationRow(in parent: NSView, at y: CGFloat, violation: Violation, width: CGFloat) {
@@ -1961,10 +1915,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         return NSColor(red: 1.0, green: 0.4, blue: 0.3, alpha: 1)                        // Red
     }
     
-    @objc private func quickFixTapped() {
-        onQuickFix?()
-    }
-
     // MARK: - Error State
 
     private func buildErrorUI(message: String) {
@@ -2179,55 +2129,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     @objc private func rephraseOptionTapped() {
         lastAction = "Rephrase with Jio Voice and Tone"
         onRephrase?()
-    }
-    
-    @objc private func quickFixOptionTapped() {
-        lastAction = "Quick Fix"
-        Task { [weak self] in
-            guard let self = self else { return }
-            
-            let preview = await AutoFixService.shared.applyAllFixes(to: self.selectedText)
-            
-            await MainActor.run {
-                self.showQuickFixPreview(preview)
-            }
-        }
-    }
-    
-    private func showQuickFixPreview(_ preview: AutoFixPreview) {
-        let message = ChatMessage(role: .action, content: lastAction)
-        conversationMessages.append(message)
-        
-        var reportContent = ""
-        
-        if preview.appliedFixes.isEmpty {
-            reportContent = "✓ No auto-fixes needed. Your text looks good!\n"
-        } else {
-            reportContent = "Found **\(preview.fixCount) auto-fix\(preview.fixCount == 1 ? "" : "es")** that can be applied:\n\n"
-            
-            for (index, fix) in preview.appliedFixes.prefix(5).enumerated() {
-                reportContent += "\(index + 1). \"\(fix.original)\" → \"\(fix.replacement)\"\n"
-                reportContent += "   _(\(fix.rule))_\n"
-            }
-            
-            if preview.appliedFixes.count > 5 {
-                reportContent += "   ... and \(preview.appliedFixes.count - 5) more fixes\n"
-            }
-            
-            reportContent += "\n**Preview:**\n\(preview.fixedContent.prefix(200))"
-            if preview.fixedContent.count > 200 {
-                reportContent += "..."
-            }
-        }
-        
-        let responseMessage = ChatMessage(
-            role: .assistant,
-            content: reportContent
-        )
-        conversationMessages.append(responseMessage)
-        lastResponse = reportContent
-        
-        updateUI(.chatWindow)
     }
     
     @objc private func validateOptionTapped() {

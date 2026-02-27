@@ -1,5 +1,4 @@
 import SwiftUI
-import ServiceManagement
 
 // MARK: - No Hover Button Style
 
@@ -12,7 +11,6 @@ struct NoHoverButtonStyle: ButtonStyle {
 
 struct MenuBarView: View {
     @EnvironmentObject var permissionsManager: PermissionsManager
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var showingApiKeyInput = false
     @State private var apiKeyText = ""
     
@@ -23,14 +21,11 @@ struct MenuBarView: View {
     private let horizontalPadding: CGFloat = 10
     private let verticalPadding: CGFloat = 6
     private let iconSize: CGFloat = 12
+    private let iconContainerWidth: CGFloat = 20
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            statusSection
-            
-            Divider()
-            
-            actionsSection
+            openToneStudioSection
             
             Divider()
             
@@ -44,63 +39,31 @@ struct MenuBarView: View {
         .frame(width: 240)
     }
 
-    // MARK: - Status
-
-    private var statusSection: some View {
-        HStack(spacing: iconLabelSpacing) {
-            Circle()
-                .fill(permissionsManager.isAccessibilityGranted ? .green : .yellow)
-                .frame(width: 8, height: 8)
-            Text(permissionsManager.isAccessibilityGranted ? "Active" : "Needs Permission")
-                .font(.system(size: iconSize))
-            Spacer()
-            Text("v1.0")
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, horizontalPadding)
-        .padding(.vertical, verticalPadding)
-    }
+    // MARK: - Open Tone Studio (First Option)
     
-    // MARK: - Actions (Open ToneStudio, Quick Rephrase)
-    
-    private var actionsSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Button {
-                onOpenEditor?()
-            } label: {
-                HStack(spacing: iconLabelSpacing) {
-                    Image(systemName: "text.bubble")
-                        .font(.system(size: iconSize))
-                    Text("open tone studio")
-                        .font(.system(size: iconSize))
-                    Spacer()
-                    Text("⌘⇧J")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .buttonStyle(NoHoverButtonStyle())
-            .padding(.horizontal, horizontalPadding)
-            .padding(.vertical, verticalPadding)
-            
+    private var openToneStudioSection: some View {
+        Button {
+            onOpenEditor?()
+        } label: {
             HStack(spacing: iconLabelSpacing) {
-                Image(systemName: "keyboard")
-                    .font(.system(size: iconSize))
-                    .foregroundStyle(.secondary)
-                Text("Quick Rephrase")
+                Image("StatusBarIcon")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: iconContainerWidth, height: iconSize)
+                Text("Open Tone Studio")
                     .font(.system(size: iconSize))
                 Spacer()
-                Text("⌃⌥R")
+                Text("⌘⇧J")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, horizontalPadding)
-            .padding(.vertical, verticalPadding)
         }
+        .buttonStyle(NoHoverButtonStyle())
+        .padding(.horizontal, horizontalPadding)
+        .padding(.vertical, verticalPadding)
     }
 
-    // MARK: - Configuration (API Key, Launch at Login)
+    // MARK: - Configuration (API Key)
 
     private var configurationSection: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -132,6 +95,7 @@ struct MenuBarView: View {
                     HStack(spacing: iconLabelSpacing) {
                         Image(systemName: "key")
                             .font(.system(size: iconSize))
+                            .frame(width: iconContainerWidth, alignment: .center)
                         Text("Configure API Key...")
                             .font(.system(size: iconSize))
                         Spacer()
@@ -146,20 +110,10 @@ struct MenuBarView: View {
                 .padding(.horizontal, horizontalPadding)
                 .padding(.vertical, verticalPadding)
             }
-            
-            Toggle("Launch at Login", isOn: $launchAtLogin)
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .font(.system(size: iconSize))
-                .onChange(of: launchAtLogin) { _, newValue in
-                    toggleLaunchAtLogin(newValue)
-                }
-                .padding(.horizontal, horizontalPadding)
-                .padding(.vertical, verticalPadding)
         }
     }
 
-    // MARK: - Utilities (Restart Monitoring, Grant Accessibility, Quit)
+    // MARK: - Utilities (Grant Accessibility, Restart Monitoring, Quit)
 
     private var utilitiesSection: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -172,6 +126,7 @@ struct MenuBarView: View {
                     HStack(spacing: iconLabelSpacing) {
                         Image(systemName: "lock.shield")
                             .font(.system(size: iconSize))
+                            .frame(width: iconContainerWidth, alignment: .center)
                         Text("Grant Accessibility...")
                             .font(.system(size: iconSize))
                     }
@@ -188,6 +143,7 @@ struct MenuBarView: View {
                 HStack(spacing: iconLabelSpacing) {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: iconSize))
+                        .frame(width: iconContainerWidth, alignment: .center)
                     Text("Restart Monitoring")
                         .font(.system(size: iconSize))
                 }
@@ -202,6 +158,7 @@ struct MenuBarView: View {
                 HStack(spacing: iconLabelSpacing) {
                     Image(systemName: "power")
                         .font(.system(size: iconSize))
+                        .frame(width: iconContainerWidth, alignment: .center)
                     Text("Quit Tone Studio")
                         .font(.system(size: iconSize))
                 }
@@ -209,20 +166,6 @@ struct MenuBarView: View {
             .buttonStyle(NoHoverButtonStyle())
             .padding(.horizontal, horizontalPadding)
             .padding(.vertical, verticalPadding)
-        }
-    }
-
-    // MARK: - Launch at login
-
-    private func toggleLaunchAtLogin(_ enabled: Bool) {
-        do {
-            if enabled {
-                try SMAppService.mainApp.register()
-            } else {
-                try SMAppService.mainApp.unregister()
-            }
-        } catch {
-            launchAtLogin = !enabled
         }
     }
 }

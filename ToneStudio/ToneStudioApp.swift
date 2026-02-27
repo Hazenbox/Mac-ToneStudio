@@ -7,7 +7,7 @@ struct ToneStudioApp: App {
     @State private var isMenuPresented = false
 
     var body: some Scene {
-        MenuBarExtra("Tone Studio", systemImage: "text.bubble") {
+        MenuBarExtra("Tone Studio", image: "StatusBarIcon") {
             MenuBarView(
                 onRestartMonitoring: {
                     appDelegate.restartMonitoring()

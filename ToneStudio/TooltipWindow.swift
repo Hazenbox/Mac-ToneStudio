@@ -1160,8 +1160,9 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         containerView.addSubview(titleLabel)
         
         // Close button (X) - right aligned, vertically centered
+        let closeBtnSize: CGFloat = 24
         let closeBtn = makeCloseButton()
-        closeBtn.frame = NSRect(x: width - 16 - 14, y: headerY + (headerHeight - 16) / 2, width: 16, height: 16)
+        closeBtn.frame = NSRect(x: width - closeBtnSize - 10, y: headerY + (headerHeight - closeBtnSize) / 2, width: closeBtnSize, height: closeBtnSize)
         containerView.addSubview(closeBtn)
         
         // === IMPROVED LAYOUT ===
@@ -1362,8 +1363,9 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         containerView.addSubview(titleLabel)
         
         // Close button - right aligned, vertically centered
+        let closeBtnSize: CGFloat = 24
         let closeBtn = makeCloseButton()
-        closeBtn.frame = NSRect(x: width - 16 - Self.contentPadding, y: headerY + (headerHeight - 16) / 2, width: 16, height: 16)
+        closeBtn.frame = NSRect(x: width - closeBtnSize - Self.contentPadding + 4, y: headerY + (headerHeight - closeBtnSize) / 2, width: closeBtnSize, height: closeBtnSize)
         containerView.addSubview(closeBtn)
         
         // Input area at bottom with more padding

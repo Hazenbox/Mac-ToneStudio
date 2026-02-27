@@ -1140,65 +1140,39 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         cardLayer.cornerRadius = Self.cardCornerRadius
         containerView.layer?.addSublayer(cardLayer)
         
-        // Header: y=9 from top - centered logo and title
-        let logoSize: CGFloat = 32
-        let headerY = height - 9 - logoSize
+        // Header with consistent height and vertical centering
+        let headerHeight: CGFloat = 44
+        let headerY = height - headerHeight
+        let logoSize: CGFloat = 28
         let titleText = "Tone Studio"
         let titleWidth: CGFloat = 90
         let logoTitleSpacing: CGFloat = 8
-        let totalContentWidth = logoSize + logoTitleSpacing + titleWidth
-        let contentStartX = (width - totalContentWidth) / 2
         
-        // Product logo: 32x32, centered
+        // Product logo - left aligned, vertically centered
+        let logoY = headerY + (headerHeight - logoSize) / 2
         let avatar = makeAvatarImageView(size: logoSize)
-        avatar.frame = NSRect(x: contentStartX, y: headerY, width: logoSize, height: logoSize)
+        avatar.frame = NSRect(x: padding + 2, y: logoY, width: logoSize, height: logoSize)
         containerView.addSubview(avatar)
         
-        // Title "Tone Studio" - centered next to logo
+        // Title "Tone Studio" - vertically centered
         let titleLabel = makeLabel(titleText, size: 14, weight: .medium, color: Self.titleText)
-        titleLabel.frame = NSRect(x: contentStartX + logoSize + logoTitleSpacing, y: headerY + (logoSize - 18) / 2, width: titleWidth, height: 18)
+        titleLabel.frame = NSRect(x: padding + 2 + logoSize + logoTitleSpacing, y: headerY + (headerHeight - 18) / 2, width: titleWidth, height: 18)
         containerView.addSubview(titleLabel)
         
-        // Close button (X) - stays at right edge
+        // Close button (X) - right aligned, vertically centered
         let closeBtn = makeCloseButton()
-        closeBtn.frame = NSRect(x: width - 16 - 14, y: headerY + (logoSize - 16) / 2, width: 16, height: 16)
+        closeBtn.frame = NSRect(x: width - 16 - 14, y: headerY + (headerHeight - 16) / 2, width: 16, height: 16)
         containerView.addSubview(closeBtn)
         
         // === IMPROVED LAYOUT ===
-        // Action buttons at bottom with better spacing
+        // Action button at bottom
         let buttonH: CGFloat = 42
         let buttonWidth: CGFloat = width - padding * 2
-        let buttonSpacing: CGFloat = 8
         
         let hasText = !selectedText.isEmpty
         
-        // Validate button at bottom
-        let validateY: CGFloat = padding + 4
-        let validateBtn = makeOptionButton(
-            title: "Validate current compliance",
-            frame: NSRect(x: padding, y: validateY, width: buttonWidth, height: buttonH),
-            action: #selector(validateOptionTapped),
-            enabled: hasText
-        )
-        containerView.addSubview(validateBtn)
-        
-        // Validation badge (shows issues count if any)
-        let badgeView = NSView(frame: NSRect(x: buttonWidth - 50, y: (buttonH - 20) / 2, width: 40, height: 20))
-        badgeView.wantsLayer = true
-        badgeView.layer?.cornerRadius = 10
-        badgeView.isHidden = true
-        validateBtn.addSubview(badgeView)
-        validationBadgeView = badgeView
-        
-        // Start async validation check only if text exists
-        if hasText {
-            Task { [weak self] in
-                await self?.runPreValidation()
-            }
-        }
-        
-        // Rephrase button above validate
-        let rephraseY = validateY + buttonH + buttonSpacing
+        // Rephrase button at bottom
+        let rephraseY: CGFloat = padding + 4
         let rephraseBtn = makeOptionButton(
             title: "Rephrase with Jio Voice and Tone",
             frame: NSRect(x: padding, y: rephraseY, width: buttonWidth, height: buttonH),
@@ -1207,7 +1181,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         )
         containerView.addSubview(rephraseBtn)
         
-        // Input panel above buttons - increased height for better spacing
+        // Input panel above button - increased height for better spacing
         let inputPanelY = rephraseY + buttonH + 12
         let inputPanelH: CGFloat = height - inputPanelY - 33 - 8  // Leave room for header
         let inputPanel = NSView(frame: NSRect(x: padding, y: inputPanelY, width: buttonWidth, height: inputPanelH))
@@ -1368,28 +1342,28 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         cardLayer.cornerRadius = Self.cardCornerRadius
         containerView.layer?.addSublayer(cardLayer)
         
-        // Header with more breathing room - centered logo and title
-        let logoSize: CGFloat = 36
-        let headerY = height - Self.contentPadding - logoSize
+        // Header with consistent height and vertical centering
+        let headerHeight: CGFloat = 44
+        let headerY = height - headerHeight
+        let logoSize: CGFloat = 28
         let titleText = "Tone Studio"
         let titleWidth: CGFloat = 100
         let logoTitleSpacing: CGFloat = 10
-        let totalContentWidth = logoSize + logoTitleSpacing + titleWidth
-        let contentStartX = (width - totalContentWidth) / 2
         
-        // Product logo - centered
+        // Product logo - left aligned, vertically centered
+        let logoY = headerY + (headerHeight - logoSize) / 2
         let avatar = makeAvatarImageView(size: logoSize)
-        avatar.frame = NSRect(x: contentStartX, y: headerY, width: logoSize, height: logoSize)
+        avatar.frame = NSRect(x: Self.contentPadding, y: logoY, width: logoSize, height: logoSize)
         containerView.addSubview(avatar)
         
-        // Title with larger font - centered next to logo
+        // Title with larger font - vertically centered
         let titleLabel = makeLabel(titleText, size: Self.titleFontSize, weight: .medium, color: Self.titleText)
-        titleLabel.frame = NSRect(x: contentStartX + logoSize + logoTitleSpacing, y: headerY + (logoSize - 20) / 2, width: titleWidth, height: 20)
+        titleLabel.frame = NSRect(x: Self.contentPadding + logoSize + logoTitleSpacing, y: headerY + (headerHeight - 20) / 2, width: titleWidth, height: 20)
         containerView.addSubview(titleLabel)
         
-        // Close button - stays at right edge
+        // Close button - right aligned, vertically centered
         let closeBtn = makeCloseButton()
-        closeBtn.frame = NSRect(x: width - 16 - Self.contentPadding, y: headerY + (logoSize - 16) / 2, width: 16, height: 16)
+        closeBtn.frame = NSRect(x: width - 16 - Self.contentPadding, y: headerY + (headerHeight - 16) / 2, width: 16, height: 16)
         containerView.addSubview(closeBtn)
         
         // Input area at bottom with more padding

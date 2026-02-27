@@ -1,11 +1,20 @@
 import SwiftUI
 
-// MARK: - No Hover Button Style
+// MARK: - Menu Item Button Style with Hover
 
-struct NoHoverButtonStyle: ButtonStyle {
+struct MenuItemButtonStyle: ButtonStyle {
+    @State private var isHovered = false
+    
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(configuration.isPressed ? Color.gray.opacity(0.3) : (isHovered ? Color.gray.opacity(0.15) : Color.clear))
+            )
             .contentShape(Rectangle())
+            .onHover { hovering in
+                isHovered = hovering
+            }
     }
 }
 
@@ -18,7 +27,7 @@ struct MenuBarView: View {
     var onOpenEditor: (() -> Void)?
     
     private let iconLabelSpacing: CGFloat = 8
-    private let horizontalPadding: CGFloat = 10
+    private let horizontalPadding: CGFloat = 6
     private let verticalPadding: CGFloat = 6
     private let iconSize: CGFloat = 12
     private let iconContainerWidth: CGFloat = 20
@@ -30,8 +39,6 @@ struct MenuBarView: View {
             Divider()
             
             configurationSection
-            
-            Divider()
             
             utilitiesSection
         }
@@ -58,7 +65,7 @@ struct MenuBarView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .buttonStyle(NoHoverButtonStyle())
+        .buttonStyle(MenuItemButtonStyle())
         .padding(.horizontal, horizontalPadding)
         .padding(.vertical, verticalPadding)
     }
@@ -106,7 +113,7 @@ struct MenuBarView: View {
                         }
                     }
                 }
-                .buttonStyle(NoHoverButtonStyle())
+                .buttonStyle(MenuItemButtonStyle())
                 .padding(.horizontal, horizontalPadding)
                 .padding(.vertical, verticalPadding)
             }
@@ -131,7 +138,7 @@ struct MenuBarView: View {
                             .font(.system(size: iconSize))
                     }
                 }
-                .buttonStyle(NoHoverButtonStyle())
+                .buttonStyle(MenuItemButtonStyle())
                 .foregroundStyle(.orange)
                 .padding(.horizontal, horizontalPadding)
                 .padding(.vertical, verticalPadding)
@@ -148,7 +155,7 @@ struct MenuBarView: View {
                         .font(.system(size: iconSize))
                 }
             }
-            .buttonStyle(NoHoverButtonStyle())
+            .buttonStyle(MenuItemButtonStyle())
             .padding(.horizontal, horizontalPadding)
             .padding(.vertical, verticalPadding)
             
@@ -163,7 +170,7 @@ struct MenuBarView: View {
                         .font(.system(size: iconSize))
                 }
             }
-            .buttonStyle(NoHoverButtonStyle())
+            .buttonStyle(MenuItemButtonStyle())
             .padding(.horizontal, horizontalPadding)
             .padding(.vertical, verticalPadding)
         }

@@ -10,8 +10,8 @@
 		63137D0B2F48900000C41B2E /* MenuBarExtraAccess in Frameworks */ = {isa = PBXBuildFile; productRef = 63137D0C2F48900000C41B2E /* MenuBarExtraAccess */; };
 		63137D102F4D000000C41B2E /* SelectedTextKit in Frameworks */ = {isa = PBXBuildFile; productRef = 63137D112F4D000000C41B2E /* SelectedTextKit */; };
 		63137D122F4D000100C41B2E /* HotKey in Frameworks */ = {isa = PBXBuildFile; productRef = 63137D132F4D000100C41B2E /* HotKey */; };
-		63137D182F50000000C41B2E /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 63137D192F50000000C41B2E /* MarkdownUI */; };
 		63137D1B2F50000100C41B2E /* HighlightSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 63137D1C2F50000100C41B2E /* HighlightSwift */; };
+		63137D202F60000000C41B2E /* Down in Frameworks */ = {isa = PBXBuildFile; productRef = 63137D212F60000000C41B2E /* Down */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -34,8 +34,8 @@
 				63137D0B2F48900000C41B2E /* MenuBarExtraAccess in Frameworks */,
 				63137D102F4D000000C41B2E /* SelectedTextKit in Frameworks */,
 				63137D122F4D000100C41B2E /* HotKey in Frameworks */,
-				63137D182F50000000C41B2E /* MarkdownUI in Frameworks */,
 				63137D1B2F50000100C41B2E /* HighlightSwift in Frameworks */,
+				63137D202F60000000C41B2E /* Down in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -81,8 +81,8 @@
 				63137D0C2F48900000C41B2E /* MenuBarExtraAccess */,
 				63137D112F4D000000C41B2E /* SelectedTextKit */,
 				63137D132F4D000100C41B2E /* HotKey */,
-				63137D192F50000000C41B2E /* MarkdownUI */,
 				63137D1C2F50000100C41B2E /* HighlightSwift */,
+				63137D212F60000000C41B2E /* Down */,
 			);
 			productName = ToneStudio;
 			productReference = 63137CFD2F487ECB00C41B2E /* ToneStudio.app */;
@@ -116,8 +116,8 @@
 				63137D0D2F48900000C41B2E /* XCRemoteSwiftPackageReference "MenuBarExtraAccess" */,
 				63137D142F4D000000C41B2E /* XCRemoteSwiftPackageReference "SelectedTextKit" */,
 				63137D162F4D000100C41B2E /* XCRemoteSwiftPackageReference "HotKey" */,
-				63137D172F50000000C41B2E /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
 				63137D1A2F50000100C41B2E /* XCRemoteSwiftPackageReference "HighlightSwift" */,
+				63137D1E2F60000000C41B2E /* XCRemoteSwiftPackageReference "Down" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 63137CFE2F487ECB00C41B2E /* Products */;
@@ -378,20 +378,20 @@
 				minimumVersion = 0.2.0;
 			};
 		};
-		63137D172F50000000C41B2E /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/gonzalezreal/swift-markdown-ui";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.4.0;
-			};
-		};
 		63137D1A2F50000100C41B2E /* XCRemoteSwiftPackageReference "HighlightSwift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/appstefan/HighlightSwift";
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 1.0.0;
+			};
+		};
+		63137D1E2F60000000C41B2E /* XCRemoteSwiftPackageReference "Down" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/johnxnguyen/Down";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.11.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -412,15 +412,15 @@
 			package = 63137D162F4D000100C41B2E /* XCRemoteSwiftPackageReference "HotKey" */;
 			productName = HotKey;
 		};
-		63137D192F50000000C41B2E /* MarkdownUI */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 63137D172F50000000C41B2E /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
-			productName = MarkdownUI;
-		};
 		63137D1C2F50000100C41B2E /* HighlightSwift */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 63137D1A2F50000100C41B2E /* XCRemoteSwiftPackageReference "HighlightSwift" */;
 			productName = HighlightSwift;
+		};
+		63137D212F60000000C41B2E /* Down */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 63137D1E2F60000000C41B2E /* XCRemoteSwiftPackageReference "Down" */;
+			productName = Down;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

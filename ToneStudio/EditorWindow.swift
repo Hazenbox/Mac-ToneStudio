@@ -34,7 +34,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     private var inputTextView: NSTextView!
     private var inputScrollView: NSScrollView!
     private var generateButton: NSButton!
-    private var resultMarkdownView: MarkdownHostingView!
+    private var resultMarkdownView: MarkdownWebView!
     private var resultScrollView: NSScrollView!
     private var copyButton: NSButton!
     private var tryAgainButton: NSButton!
@@ -227,8 +227,8 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         resultScrollView.borderType = .noBorder
         resultScrollView.drawsBackground = false
         
-        // Result markdown view - directly as document view without FlippedView wrapper
-        resultMarkdownView = MarkdownHostingView(frame: NSRect(x: 0, y: 0, width: width - 48, height: Self.resultHeight - 24))
+        // Result markdown view using WKWebView for proper rendering
+        resultMarkdownView = MarkdownWebView(frame: NSRect(x: 0, y: 0, width: width - 48, height: Self.resultHeight - 24))
         resultMarkdownView.autoresizingMask = [.width]
         
         resultScrollView.documentView = resultMarkdownView
@@ -362,15 +362,12 @@ final class EditorWindow: NSObject, NSWindowDelegate {
             errorLabel.isHidden = true
             
             // Update markdown view with result
-            let availableWidth = resultScrollView.frame.width - 24
-            resultMarkdownView.configure(content: text, maxWidth: availableWidth)
-            
-            // Update scroll view document size based on markdown content height
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            resultMarkdownView.configure(markdown: text) { [weak self] newHeight in
                 guard let self = self else { return }
-                let contentHeight = max(self.resultMarkdownView.calculatedHeight, Self.resultHeight - 24)
+                let contentHeight = max(newHeight, Self.resultHeight - 24)
                 self.resultMarkdownView.frame.size.height = contentHeight
             }
+            
             
             resultContainer.isHidden = false
             actionButtonsStack.isHidden = false

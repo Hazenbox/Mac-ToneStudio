@@ -1016,36 +1016,38 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     }
     
     private func estimateMarkdownHeight(_ text: String, width: CGFloat) -> CGFloat {
-        let hostingView = MarkdownHostingView()
-        hostingView.configure(content: text, maxWidth: width)
-        
-        let fittingSize = hostingView.intrinsicContentSize
-        
-        if fittingSize.height > 0 {
-            return ceil(fittingSize.height)
-        }
-        
-        let baseHeight = estimateTextHeight(text, width: width, fontSize: Self.messageFontSize)
-        var multiplier: CGFloat = 1.0
+        let baseLineHeight: CGFloat = 20
+        let lines = text.components(separatedBy: .newlines).count
+        var height = CGFloat(max(lines, 1)) * baseLineHeight
         
         if text.contains("```") {
             let codeBlockCount = text.components(separatedBy: "```").count / 2
-            multiplier += CGFloat(codeBlockCount) * 0.3
-        }
-        if text.contains("# ") || text.contains("## ") || text.contains("### ") {
-            multiplier += 0.2
-        }
-        if text.contains("- ") || text.contains("* ") || text.contains("1. ") {
-            multiplier += 0.15
-        }
-        if text.contains("> ") {
-            multiplier += 0.1
-        }
-        if text.contains("|") && text.contains("-|-") {
-            multiplier += 0.25
+            height += CGFloat(codeBlockCount) * 80
         }
         
-        return ceil(baseHeight * multiplier)
+        if text.contains("# ") || text.contains("## ") || text.contains("### ") {
+            height += 30
+        }
+        
+        if text.contains("- ") || text.contains("* ") || text.contains("1. ") {
+            let listItems = text.components(separatedBy: "\n").filter { 
+                $0.trimmingCharacters(in: .whitespaces).hasPrefix("-") ||
+                $0.trimmingCharacters(in: .whitespaces).hasPrefix("*") ||
+                $0.trimmingCharacters(in: .whitespaces).first?.isNumber == true
+            }.count
+            height += CGFloat(listItems) * 6
+        }
+        
+        if text.contains("> ") {
+            height += 20
+        }
+        
+        if text.contains("|") && text.contains("-|") {
+            let tableRows = text.components(separatedBy: "\n").filter { $0.contains("|") }.count
+            height += CGFloat(tableRows) * 30
+        }
+        
+        return max(height, 50)
     }
 
     // MARK: - Mini Icon State
@@ -1632,20 +1634,11 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
                 let availableWidth = width - padding * 2
                 let textHeight = msgData.textHeight
                 
-                print("[TOOLTIP DEBUG] Creating MarkdownHostingView for assistant message")
-                print("[TOOLTIP DEBUG] Frame: x=\(padding), y=\(yPos - textHeight), w=\(availableWidth), h=\(textHeight)")
-                print("[TOOLTIP DEBUG] Content length: \(message.content.count)")
-                print("[TOOLTIP DEBUG] Content preview: \(String(message.content.prefix(200)))")
-                
-                // Position from top of this message block
                 yPos -= textHeight
                 
-                // AI response with markdown rendering - set frame in init BEFORE configure
-                let markdownView = MarkdownHostingView(frame: NSRect(x: padding, y: yPos, width: availableWidth, height: textHeight))
-                markdownView.configure(content: message.content, maxWidth: availableWidth)
+                let markdownView = MarkdownWebView(frame: NSRect(x: padding, y: yPos, width: availableWidth, height: textHeight))
+                markdownView.configure(markdown: message.content)
                 contentView.addSubview(markdownView)
-                
-                print("[TOOLTIP DEBUG] MarkdownHostingView added to contentView")
                 
                 yPos -= 8  // Gap between text and action buttons
                 

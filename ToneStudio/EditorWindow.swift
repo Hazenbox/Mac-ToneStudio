@@ -1,6 +1,5 @@
 import Cocoa
 import OSLog
-import SwiftUI
 
 // MARK: - Editor Window
 
@@ -34,7 +33,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     private var inputTextView: NSTextView!
     private var inputScrollView: NSScrollView!
     private var generateButton: NSButton!
-    private var resultMarkdownView: MarkdownWebView!
+    private var resultTextView: NSTextView!
     private var resultScrollView: NSScrollView!
     private var copyButton: NSButton!
     private var tryAgainButton: NSButton!
@@ -114,23 +113,19 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     private func setupUI() {
         let padding = Self.padding
         let contentWidth = Self.windowSize.width - padding * 2
-        var yOffset = Self.windowSize.height - padding - 8  // Extra top padding
+        var yOffset = Self.windowSize.height - padding - 8
         
-        // Input section with inline generate button
         yOffset -= Self.inputHeight
         setupInputSection(at: yOffset, width: contentWidth, padding: padding)
         
-        // Error label (below input, only shown on error)
         yOffset -= 4
         yOffset -= 16
         setupErrorLabel(at: yOffset, width: contentWidth, padding: padding)
         
-        // Result section
         yOffset -= 8
         yOffset -= Self.resultHeight
         setupResultSection(at: yOffset, width: contentWidth, padding: padding)
         
-        // Action buttons (bottom-left of result)
         yOffset -= 6
         setupActionButtons(at: yOffset, width: contentWidth, padding: padding)
         
@@ -138,7 +133,6 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     }
     
     private func setupInputSection(at y: CGFloat, width: CGFloat, padding: CGFloat) {
-        // Input container - clean, no border
         inputContainer = NSView(frame: NSRect(x: padding, y: y, width: width, height: Self.inputHeight))
         inputContainer.wantsLayer = true
         inputContainer.layer?.backgroundColor = Self.inputBgColor.cgColor
@@ -146,7 +140,6 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         inputContainer.identifier = NSUserInterfaceItemIdentifier("inputContainer")
         containerView.addSubview(inputContainer)
         
-        // Generate button - inline at bottom-right of input container
         generateButton = NSButton(frame: NSRect(x: width - 96, y: 8, width: 88, height: 28))
         generateButton.title = "generate"
         generateButton.bezelStyle = .rounded
@@ -157,8 +150,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         generateButton.keyEquivalentModifierMask = .command
         inputContainer.addSubview(generateButton)
         
-        // Scroll view for text - above the button
-        let scrollHeight = Self.inputHeight - 44  // Leave room for button
+        let scrollHeight = Self.inputHeight - 44
         inputScrollView = NSScrollView(frame: NSRect(x: 12, y: 40, width: width - 24, height: scrollHeight))
         inputScrollView.hasVerticalScroller = true
         inputScrollView.hasHorizontalScroller = false
@@ -167,7 +159,6 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         inputScrollView.borderType = .noBorder
         inputScrollView.drawsBackground = false
         
-        // Text view
         let textStorage = NSTextStorage()
         let layoutManager = NSLayoutManager()
         textStorage.addLayoutManager(layoutManager)
@@ -209,7 +200,6 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     }
     
     private func setupResultSection(at y: CGFloat, width: CGFloat, padding: CGFloat) {
-        // Result container - clean, no border
         resultContainer = NSView(frame: NSRect(x: padding, y: y, width: width, height: Self.resultHeight))
         resultContainer.wantsLayer = true
         resultContainer.layer?.backgroundColor = Self.inputBgColor.cgColor
@@ -218,7 +208,6 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         resultContainer.identifier = NSUserInterfaceItemIdentifier("resultContainer")
         containerView.addSubview(resultContainer)
         
-        // Scroll view for result
         resultScrollView = NSScrollView(frame: NSRect(x: 12, y: 12, width: width - 24, height: Self.resultHeight - 24))
         resultScrollView.hasVerticalScroller = true
         resultScrollView.hasHorizontalScroller = false
@@ -227,16 +216,34 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         resultScrollView.borderType = .noBorder
         resultScrollView.drawsBackground = false
         
-        // Result markdown view using WKWebView for proper rendering
-        resultMarkdownView = MarkdownWebView(frame: NSRect(x: 0, y: 0, width: width - 48, height: Self.resultHeight - 24))
-        resultMarkdownView.autoresizingMask = [.width]
+        let textStorage = NSTextStorage()
+        let layoutManager = NSLayoutManager()
+        textStorage.addLayoutManager(layoutManager)
         
-        resultScrollView.documentView = resultMarkdownView
+        let textContainer = NSTextContainer(containerSize: NSSize(width: width - 48, height: CGFloat.greatestFiniteMagnitude))
+        textContainer.widthTracksTextView = true
+        textContainer.heightTracksTextView = false
+        layoutManager.addTextContainer(textContainer)
+        
+        resultTextView = NSTextView(frame: NSRect(x: 0, y: 0, width: width - 24, height: Self.resultHeight - 24), textContainer: textContainer)
+        resultTextView.isEditable = false
+        resultTextView.isSelectable = true
+        resultTextView.isRichText = false
+        resultTextView.font = .systemFont(ofSize: 14)
+        resultTextView.textColor = Self.textColor
+        resultTextView.backgroundColor = .clear
+        resultTextView.drawsBackground = false
+        resultTextView.isVerticallyResizable = true
+        resultTextView.isHorizontallyResizable = false
+        resultTextView.autoresizingMask = [.width]
+        resultTextView.minSize = NSSize(width: 0, height: Self.resultHeight - 24)
+        resultTextView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        
+        resultScrollView.documentView = resultTextView
         resultContainer.addSubview(resultScrollView)
     }
     
     private func setupActionButtons(at y: CGFloat, width: CGFloat, padding: CGFloat) {
-        // Icon-only buttons
         copyButton = makeIconButton(symbolName: "doc.on.doc", tooltip: "copy")
         copyButton.target = self
         copyButton.action = #selector(copyButtonClicked)
@@ -253,7 +260,6 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         dislikeButton.target = self
         dislikeButton.action = #selector(dislikeButtonClicked)
         
-        // Left-aligned action bar (like ChatGPT)
         actionButtonsStack = NSStackView(views: [copyButton, tryAgainButton, likeButton, dislikeButton])
         actionButtonsStack.orientation = .horizontal
         actionButtonsStack.spacing = 4
@@ -289,7 +295,6 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         
         window.setFrame(NSRect(x: x, y: y, width: Self.windowSize.width, height: Self.windowSize.height), display: false)
         
-        // Reset state
         currentState = .idle
         inputTextView.string = ""
         updateUIForState()
@@ -360,19 +365,10 @@ final class EditorWindow: NSObject, NSWindowDelegate {
             generateButton.title = "generate"
             generateButton.isEnabled = true
             errorLabel.isHidden = true
-            
-            // Update markdown view with result
-            resultMarkdownView.configure(markdown: text) { [weak self] newHeight in
-                guard let self = self else { return }
-                let contentHeight = max(newHeight, Self.resultHeight - 24)
-                self.resultMarkdownView.frame.size.height = contentHeight
-            }
-            
-            
+            resultTextView.string = text
             resultContainer.isHidden = false
             actionButtonsStack.isHidden = false
             
-            // Reset feedback state
             feedbackSubmitted = false
             likeButton.isEnabled = true
             dislikeButton.isEnabled = true
@@ -445,19 +441,16 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         let padding = Self.padding
         let contentWidth = newSize.width - padding * 2
         
-        // Update input container
         inputContainer.frame.size.width = contentWidth
         inputScrollView.frame.size.width = contentWidth - 24
         inputTextView.textContainer?.containerSize.width = contentWidth - 48
         generateButton.frame.origin.x = contentWidth - 96
         
-        // Update error label
         errorLabel.frame.size.width = contentWidth
         
-        // Update result container
         resultContainer.frame.size.width = contentWidth
         resultScrollView.frame.size.width = contentWidth - 24
-        resultMarkdownView.frame.size.width = contentWidth - 48
+        resultTextView.textContainer?.containerSize.width = contentWidth - 48
     }
     
     // MARK: - Event Monitors

@@ -1,6 +1,5 @@
 import Cocoa
 import OSLog
-import SwiftUI
 
 // MARK: - Tooltip States
 
@@ -328,7 +327,6 @@ final class DraggableFABView: NSView {
                 isDragging = true
                 onDragStart?()
             }
-            // Calculate new window position based on drag delta
             let deltaX = currentLoc.x - startLoc.x
             let deltaY = currentLoc.y - startLoc.y
             let newOrigin = NSPoint(x: initialOrigin.x + deltaX, y: initialOrigin.y + deltaY)
@@ -433,7 +431,8 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     // MARK: - UI References
     private var inputField: NSTextField?
     private var quickActionsInputField: NSTextField?
-    private var chatWebView: ChatWebView?
+    private var chatScrollView: NSScrollView?
+    private var chatContentView: NSView?
     private var inlineSpinner: NSProgressIndicator?
     private var fabCloseButton: NSButton?
     private var fabTrackingArea: NSTrackingArea?
@@ -458,14 +457,23 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     private static let bubbleCorner: CGFloat = BubbleContainerView.cornerRadius
     
     private static let optionsMenuSize = NSSize(width: 335, height: 330)
-    private static let chatWindowWidth: CGFloat = 480
-    private static let chatWindowMinHeight: CGFloat = 520
-    private static let chatWindowMaxHeight: CGFloat = 700
+    private static let chatWindowWidth: CGFloat = 420
+    private static let chatWindowMinHeight: CGFloat = 480
+    private static let chatWindowMaxHeight: CGFloat = 600
     private static let compliancePanelSize = NSSize(width: 360, height: 400)
     private static let errorWidth: CGFloat = 300
     private static let cardCornerRadius: CGFloat = 16
     private static let innerCornerRadius: CGFloat = 11
+    private static let pillCornerRadius: CGFloat = 21
     private static let fabSize: CGFloat = 48
+    private static let userBubbleMaxWidthRatio: CGFloat = 0.8
+    private static let selectedTextContainerH: CGFloat = 42
+    
+    // User bubble styling constants
+    private static let userBubblePaddingH: CGFloat = 16
+    private static let userBubblePaddingV: CGFloat = 10
+    private static let userBubbleMinWidth: CGFloat = 72
+    private static let userBubbleMinTextWidth: CGFloat = 48
     
     // Typography constants
     private static let messageFontSize: CGFloat = 14
@@ -474,18 +482,19 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     
     // Spacing constants
     private static let contentPadding: CGFloat = 12
+    private static let messageSpacing: CGFloat = 16
 
     // MARK: - Colors (Figma specs)
     private static let darkBubbleBG  = NSColor(red: 0.17, green: 0.17, blue: 0.19, alpha: 1)
-    private static let cardBG        = NSColor(red: 0.145, green: 0.145, blue: 0.149, alpha: 1) // #252526
-    private static let innerPanelBG  = NSColor(red: 0.11, green: 0.11, blue: 0.11, alpha: 1)   // #1c1c1c
+    private static let cardBG        = NSColor(red: 0.145, green: 0.145, blue: 0.149, alpha: 1)
+    private static let innerPanelBG  = NSColor(red: 0.11, green: 0.11, blue: 0.11, alpha: 1)
     private static let cardBorder    = NSColor.clear
     private static let primaryText   = NSColor.white
     private static let secondaryText = NSColor.white.withAlphaComponent(0.4)
     private static let titleText     = NSColor.white.withAlphaComponent(0.8)
-    private static let inputBG       = NSColor(red: 0.11, green: 0.11, blue: 0.11, alpha: 1)   // #1c1c1c
-    private static let buttonBG      = NSColor.white.withAlphaComponent(0.06)                  // rgba(255,255,255,0.06)
-    private static let actionPillBG  = NSColor.white.withAlphaComponent(0.06)                  // rgba(255,255,255,0.06)
+    private static let inputBG       = NSColor(red: 0.11, green: 0.11, blue: 0.11, alpha: 1)
+    private static let buttonBG      = NSColor.white.withAlphaComponent(0.06)
+    private static let actionPillBG  = NSColor.white.withAlphaComponent(0.06)
 
     // MARK: - Positioning Constants
     private static let horizontalGap: CGFloat = 4
@@ -669,7 +678,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             panel.alphaValue = 0
             panel.orderFrontRegardless()
             lastShowTime = Date()
-            // Apple-style spring animation for show
             NSAnimationContext.runAnimationGroup { ctx in
                 ctx.duration = 0.25
                 ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.0)
@@ -713,7 +721,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         panel.alphaValue = 0
         panel.orderFrontRegardless()
         lastShowTime = Date()
-        // Apple-style spring animation for show
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.25
             ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.0)
@@ -808,7 +815,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         panel.alphaValue = 0
         panel.orderFrontRegardless()
         lastShowTime = Date()
-        // Apple-style spring animation for show
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.25
             ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.0)
@@ -833,7 +839,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     }
 
     func hide(force: Bool = false) {
-        // Prevent hiding too quickly after showing (unless forced)
         if !force && Date().timeIntervalSince(lastShowTime) < Self.minVisibleDuration {
             return
         }
@@ -841,7 +846,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         cancelAutoHideTimer()
         removeEventMonitors()
         clearConversation()
-        // Apple-style ease-out animation for hide
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.2
             context.timingFunction = CAMediaTimingFunction(controlPoints: 0.4, 0.0, 0.6, 1.0)
@@ -925,7 +929,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             panel.isMovableByWindowBackground = false
             let size = NSSize(width: Self.fabSize, height: Self.fabSize)
             buildFloatingFABUI(size: size)
-            // Animate the shrinking transition
             animateResizeAndReanchor(to: size)
             
         case .compliancePanel:
@@ -937,7 +940,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     
     private func animateResizeAndReanchor(to size: NSSize) {
         var frame = panel.frame
-        // Animate to center of current position for FAB
         let currentCenter = CGPoint(x: frame.midX, y: frame.midY)
         frame.size = size
         frame.origin = CGPoint(x: currentCenter.x - size.width / 2, y: currentCenter.y - size.height / 2)
@@ -958,7 +960,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             }
         }
         
-        // iOS-style spring animation (quick and snappy)
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.25
             ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.0)
@@ -968,7 +969,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     }
     
     private func calculateChatWindowHeight() -> CGFloat {
-        var contentHeight: CGFloat = 140  // Base height for header + input area
+        var contentHeight: CGFloat = 140
         
         if !selectedText.isEmpty {
             contentHeight += estimateTextHeight(selectedText, width: Self.chatWindowWidth - Self.contentPadding * 4, fontSize: Self.messageFontSize) + 24
@@ -980,9 +981,9 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         
         for message in conversationMessages {
             if message.role == .assistant {
-                contentHeight += estimateMarkdownHeight(message.content, width: Self.chatWindowWidth - Self.contentPadding * 4) + 56
+                contentHeight += estimateTextHeight(message.content, width: Self.chatWindowWidth - Self.contentPadding * 4, fontSize: Self.messageFontSize) + 56
             } else if message.role == .user {
-                contentHeight += 48  // Approximate user bubble height
+                contentHeight += 48
             }
         }
         
@@ -1003,67 +1004,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         )
         return ceil(rect.height)
     }
-    
-    private func estimateMarkdownHeight(_ text: String, width: CGFloat) -> CGFloat {
-        let baseLineHeight: CGFloat = 22
-        let charPerLine = max(Int(width / 7), 40)
-        let lines = text.components(separatedBy: .newlines)
-        
-        var height: CGFloat = 0
-        var inCodeBlock = false
-        
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            
-            if trimmed.hasPrefix("```") {
-                inCodeBlock.toggle()
-                if inCodeBlock {
-                    height += 14
-                } else {
-                    height += 14
-                }
-                continue
-            }
-            
-            if inCodeBlock {
-                height += 19.5
-                continue
-            }
-            
-            if trimmed.isEmpty {
-                height += 8
-                continue
-            }
-            
-            if trimmed.hasPrefix("# ") {
-                height += 28
-            } else if trimmed.hasPrefix("## ") {
-                height += 24
-            } else if trimmed.hasPrefix("### ") {
-                height += 22
-            } else if trimmed.hasPrefix("#### ") || trimmed.hasPrefix("##### ") || trimmed.hasPrefix("###### ") {
-                height += 20
-            } else if trimmed.hasPrefix("> ") {
-                let wrapLines = max(1, Int(ceil(Double(trimmed.count) / Double(charPerLine))))
-                height += CGFloat(wrapLines) * baseLineHeight + 12
-            } else if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") || trimmed.first?.isNumber == true {
-                let wrapLines = max(1, Int(ceil(Double(trimmed.count) / Double(charPerLine))))
-                height += CGFloat(wrapLines) * baseLineHeight + 6
-            } else if trimmed.hasPrefix("|") && trimmed.hasSuffix("|") {
-                height += 36
-            } else if trimmed == "---" || trimmed == "***" || trimmed == "___" {
-                height += 20
-            } else {
-                let wrapLines = max(1, Int(ceil(Double(trimmed.count) / Double(charPerLine))))
-                height += CGFloat(wrapLines) * baseLineHeight
-            }
-        }
-        
-        let paragraphCount = text.components(separatedBy: "\n\n").count - 1
-        height += CGFloat(paragraphCount) * 8
-        
-        return max(height, 20)
-    }
 
     // MARK: - Mini Icon State
     
@@ -1074,7 +1014,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         
         let iconSize = size.width
         
-        // Logo only - no background
         let avatar = makeAvatarImageView(size: iconSize)
         avatar.frame = NSRect(x: 0, y: 0, width: iconSize, height: iconSize)
         containerView.addSubview(avatar)
@@ -1096,12 +1035,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         
         let iconSize = size.width
         
-        // Logo only - no background
         let avatar = makeAvatarImageView(size: iconSize)
         avatar.frame = NSRect(x: 0, y: 0, width: iconSize, height: iconSize)
         containerView.addSubview(avatar)
         
-        // Close button (hidden by default, shown on hover)
         let closeBtn = NSButton(frame: NSRect(origin: .zero, size: size))
         closeBtn.isBordered = false
         closeBtn.bezelStyle = .shadowlessSquare
@@ -1114,11 +1051,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         closeBtn.contentTintColor = .white
         closeBtn.target = self
         closeBtn.action = #selector(fabCloseTapped)
-        closeBtn.alphaValue = 0  // Hidden by default
+        closeBtn.alphaValue = 0
         containerView.addSubview(closeBtn)
         fabCloseButton = closeBtn
         
-        // Draggable area - allows click to restore chat OR drag to reposition
         let dragView = DraggableFABView(frame: NSRect(origin: .zero, size: size))
         dragView.onClick = { [weak self] in
             guard let self, !self.isFabHovered else { return }
@@ -1130,12 +1066,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         containerView.addSubview(dragView)
         draggableFABView = dragView
         
-        // Add tracking area for hover detection (shows close button)
         setupFABTrackingArea()
     }
     
     private func setupFABTrackingArea() {
-        // Remove existing tracking area if any
         if let existingArea = fabTrackingArea {
             containerView.removeTrackingArea(existingArea)
         }
@@ -1173,25 +1107,23 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         containerView.addSubview(label)
     }
 
-    // MARK: - Options Menu State (Figma: node 123-522)
+    // MARK: - Options Menu State
 
     private func buildOptionsMenuUI(size: NSSize) {
         currentState = .optionsMenu
-        panel.allowsKeyStatus = true  // Allow key for input field
+        panel.allowsKeyStatus = true
         clearContainer()
         
         let width = size.width
         let height = size.height
         let padding: CGFloat = 7
         
-        // Card background - #252526, corner radius 15
         let cardLayer = CALayer()
         cardLayer.frame = CGRect(origin: .zero, size: size)
         cardLayer.backgroundColor = Self.cardBG.cgColor
         cardLayer.cornerRadius = Self.cardCornerRadius
         containerView.layer?.addSublayer(cardLayer)
         
-        // Header with consistent height and vertical centering
         let headerHeight: CGFloat = 44
         let headerY = height - headerHeight
         let logoSize: CGFloat = 28
@@ -1199,31 +1131,25 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         let titleWidth: CGFloat = 90
         let logoTitleSpacing: CGFloat = 8
         
-        // Product logo - left aligned, vertically centered
         let logoY = headerY + (headerHeight - logoSize) / 2
         let avatar = makeAvatarImageView(size: logoSize)
         avatar.frame = NSRect(x: padding + 2, y: logoY, width: logoSize, height: logoSize)
         containerView.addSubview(avatar)
         
-        // Title "Tone Studio" - vertically centered
         let titleLabel = makeLabel(titleText, size: 14, weight: .medium, color: Self.titleText)
         titleLabel.frame = NSRect(x: padding + 2 + logoSize + logoTitleSpacing, y: headerY + (headerHeight - 18) / 2, width: titleWidth, height: 18)
         containerView.addSubview(titleLabel)
         
-        // Close button (X) - right aligned, vertically centered
         let closeBtnSize: CGFloat = 24
         let closeBtn = makeCloseButton()
         closeBtn.frame = NSRect(x: width - closeBtnSize - 10, y: headerY + (headerHeight - closeBtnSize) / 2, width: closeBtnSize, height: closeBtnSize)
         containerView.addSubview(closeBtn)
         
-        // === IMPROVED LAYOUT ===
-        // Action button at bottom
         let buttonH: CGFloat = 42
         let buttonWidth: CGFloat = width - padding * 2
         
         let hasText = !selectedText.isEmpty
         
-        // Rephrase button at bottom
         let rephraseY: CGFloat = padding + 4
         let rephraseBtn = makeOptionButton(
             title: "Rephrase with Jio Voice and Tone",
@@ -1233,9 +1159,8 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         )
         containerView.addSubview(rephraseBtn)
         
-        // Input panel above button - increased height for better spacing
         let inputPanelY = rephraseY + buttonH + 12
-        let inputPanelH: CGFloat = height - inputPanelY - 33 - 8  // Leave room for header
+        let inputPanelH: CGFloat = height - inputPanelY - 33 - 8
         let inputPanel = NSView(frame: NSRect(x: padding, y: inputPanelY, width: buttonWidth, height: inputPanelH))
         inputPanel.wantsLayer = true
         inputPanel.layer?.backgroundColor = Self.innerPanelBG.cgColor
@@ -1246,7 +1171,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         var textFieldY: CGFloat
         
         if hasText {
-            // Selected text container at TOP of input panel
             let selectedRowH: CGFloat = 32
             let selectedRowY = inputPanelH - 10 - selectedRowH
             let selectedRowContainer = NSView(frame: NSRect(x: 10, y: selectedRowY, width: buttonWidth - 20, height: selectedRowH))
@@ -1312,7 +1236,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         inputPanel.addSubview(textField)
         quickActionsInputField = textField
         
-        // 3. Send button at bottom-right corner with 10px padding
         let sendBtnSize: CGFloat = 28
         let sendBtn = NSButton(frame: NSRect(
             x: buttonWidth - 10 - sendBtnSize,
@@ -1330,7 +1253,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         sendBtn.action = #selector(quickActionsSendTapped)
         inputPanel.addSubview(sendBtn)
         
-        // Focus the input field after a short delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             guard let self else { return }
             self.panel.allowsKeyStatus = true
@@ -1387,14 +1309,12 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         let width = size.width
         let height = size.height
         
-        // Card background
         let cardLayer = CALayer()
         cardLayer.frame = CGRect(origin: .zero, size: size)
         cardLayer.backgroundColor = Self.cardBG.cgColor
         cardLayer.cornerRadius = Self.cardCornerRadius
         containerView.layer?.addSublayer(cardLayer)
         
-        // Header with consistent height and vertical centering
         let headerHeight: CGFloat = 44
         let headerY = height - headerHeight
         let logoSize: CGFloat = 28
@@ -1402,24 +1322,20 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         let titleWidth: CGFloat = 100
         let logoTitleSpacing: CGFloat = 10
         
-        // Product logo - left aligned, vertically centered
         let logoY = headerY + (headerHeight - logoSize) / 2
         let avatar = makeAvatarImageView(size: logoSize)
         avatar.frame = NSRect(x: Self.contentPadding, y: logoY, width: logoSize, height: logoSize)
         containerView.addSubview(avatar)
         
-        // Title with larger font - vertically centered
         let titleLabel = makeLabel(titleText, size: Self.titleFontSize, weight: .medium, color: Self.titleText)
         titleLabel.frame = NSRect(x: Self.contentPadding + logoSize + logoTitleSpacing, y: headerY + (headerHeight - 20) / 2, width: titleWidth, height: 20)
         containerView.addSubview(titleLabel)
         
-        // Close button - right aligned, vertically centered
         let closeBtnSize: CGFloat = 24
         let closeBtn = makeCloseButton()
         closeBtn.frame = NSRect(x: width - closeBtnSize - Self.contentPadding + 4, y: headerY + (headerHeight - closeBtnSize) / 2, width: closeBtnSize, height: closeBtnSize)
         containerView.addSubview(closeBtn)
         
-        // Input area at bottom with more padding
         let inputPanelH: CGFloat = 80
         let inputPanelY: CGFloat = Self.contentPadding
         let sendBtnSize: CGFloat = 32
@@ -1430,7 +1346,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         inputBG.layer?.cornerRadius = Self.innerCornerRadius
         containerView.addSubview(inputBG)
         
-        // Send button
         let sendBtn = NSButton(frame: NSRect(
             x: width - Self.contentPadding - 10 - sendBtnSize,
             y: inputPanelY + 10,
@@ -1448,7 +1363,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         sendBtn.isEnabled = !isLoadingInline
         containerView.addSubview(sendBtn)
         
-        // Text field with larger font
         let textFieldH: CGFloat = 60
         let textField = NSTextField(frame: NSRect(
             x: Self.contentPadding + 12,
@@ -1476,39 +1390,31 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         containerView.addSubview(textField)
         inputField = textField
         
-        // Content area between header and input - now uses single ChatWebView
         let contentTopY: CGFloat = inputPanelY + inputPanelH + Self.contentPadding
-        let contentBottomY: CGFloat = height - 44  // Header area
+        let contentBottomY: CGFloat = height - 44
         let contentH = contentBottomY - contentTopY
         
-        let webView = ChatWebView(frame: NSRect(x: 0, y: contentTopY, width: width, height: contentH))
-        webView.delegate = self
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: contentTopY, width: width, height: contentH))
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.borderType = .noBorder
+        scrollView.backgroundColor = .clear
+        scrollView.drawsBackground = false
+        scrollView.autohidesScrollers = true
         
-        // Convert conversation messages to the format ChatWebView expects
-        let messages: [(role: String, content: String)] = conversationMessages.compactMap { msg in
-            switch msg.role {
-            case .user:
-                return (role: "user", content: msg.content)
-            case .assistant:
-                return (role: "assistant", content: msg.content)
-            case .action:
-                return nil
-            }
-        }
+        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: width, height: contentH))
+        contentView.wantsLayer = true
         
-        webView.updateChat(
-            messages: messages,
-            selectedText: selectedText,
-            lastAction: lastAction,
-            isLoading: isLoadingInline
-        )
+        buildChatContentInView(contentView, width: width, availableHeight: contentH)
         
-        containerView.addSubview(webView)
-        chatWebView = webView
+        scrollView.documentView = contentView
+        containerView.addSubview(scrollView)
+        chatScrollView = scrollView
+        chatContentView = contentView
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             guard let self else { return }
-            // Focus input field when chat window is shown
+            self.scrollToBottom()
             if let field = self.inputField, field.isEnabled {
                 self.panel.allowsKeyStatus = true
                 self.panel.makeFirstResponder(field)
@@ -1516,32 +1422,239 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         }
     }
     
-    
-    private func rebuildChatContent() {
-        guard let webView = chatWebView else { return }
+    private func buildChatContentInView(_ contentView: NSView, width: CGFloat, availableHeight: CGFloat) {
+        let padding: CGFloat = 7
+        let btnSize: CGFloat = 18
+        let btnSpacing: CGFloat = 6
         
-        // Convert conversation messages to the format ChatWebView expects
-        let messages: [(role: String, content: String)] = conversationMessages.compactMap { msg in
-            switch msg.role {
-            case .user:
-                return (role: "user", content: msg.content)
-            case .assistant:
-                return (role: "assistant", content: msg.content)
-            case .action:
-                return nil
+        var totalHeight: CGFloat = 8
+        
+        let selectedTextH: CGFloat = selectedText.isEmpty ? 0 : Self.selectedTextContainerH + 12
+        totalHeight += selectedTextH
+        
+        let actionPillH: CGFloat = lastAction.isEmpty ? 0 : 36 + 12
+        totalHeight += actionPillH
+        
+        var messageHeights: [(role: ChatMessage.Role, content: String, height: CGFloat, textHeight: CGFloat, bubbleW: CGFloat)] = []
+        
+        for message in conversationMessages {
+            if message.role == .assistant {
+                let availableWidth = width - padding * 2
+                let textHeight = estimateTextHeight(message.content, width: availableWidth, fontSize: Self.messageFontSize)
+                let messageH = textHeight + 8 + btnSize + Self.messageSpacing
+                messageHeights.append((role: .assistant, content: message.content, height: messageH, textHeight: textHeight, bubbleW: 0))
+                totalHeight += messageH
+            } else if message.role == .user {
+                let maxBubbleWidth = (width - padding * 2) * Self.userBubbleMaxWidthRatio
+                let naturalWidth = estimateTextWidth(message.content, fontSize: Self.messageFontSize)
+                let textWidth = max(min(naturalWidth, maxBubbleWidth - Self.userBubblePaddingH * 2), Self.userBubbleMinTextWidth)
+                let textHeight = estimateTextHeight(message.content, width: textWidth, fontSize: Self.messageFontSize)
+                let bubbleW = max(textWidth + Self.userBubblePaddingH * 2, Self.userBubbleMinWidth)
+                let bubbleH = textHeight + Self.userBubblePaddingV * 2
+                messageHeights.append((role: .user, content: message.content, height: bubbleH + Self.messageSpacing, textHeight: textHeight, bubbleW: bubbleW))
+                totalHeight += bubbleH + Self.messageSpacing
             }
         }
         
-        webView.updateChat(
-            messages: messages,
-            selectedText: selectedText,
-            lastAction: lastAction,
-            isLoading: isLoadingInline
-        )
+        let loadingH: CGFloat = isLoadingInline ? 24 + 12 : 0
+        totalHeight += loadingH
+        
+        totalHeight += 10
+        
+        let contentHeight = max(totalHeight, availableHeight)
+        contentView.frame = NSRect(x: 0, y: 0, width: width, height: contentHeight)
+        
+        var yPos: CGFloat = contentHeight - 8
+        
+        if conversationMessages.isEmpty && selectedText.isEmpty && lastAction.isEmpty && !isLoadingInline {
+            let welcomeLabel = makeLabel(
+                "Ask me anything, questions, content help, or select text to get started",
+                size: 13, weight: .regular, color: Self.secondaryText
+            )
+            welcomeLabel.alignment = .center
+            welcomeLabel.maximumNumberOfLines = 2
+            welcomeLabel.frame = NSRect(x: padding, y: (contentHeight - 40) / 2, width: width - padding * 2, height: 40)
+            contentView.addSubview(welcomeLabel)
+            return
+        }
+        
+        if !selectedText.isEmpty {
+            let containerH = Self.selectedTextContainerH
+            let containerW = width - padding * 2
+            yPos -= containerH
+            
+            let selectedContainer = NSView(frame: NSRect(x: padding, y: yPos, width: containerW, height: containerH))
+            selectedContainer.wantsLayer = true
+            selectedContainer.layer?.backgroundColor = Self.innerPanelBG.cgColor
+            selectedContainer.layer?.cornerRadius = Self.innerCornerRadius
+            contentView.addSubview(selectedContainer)
+            
+            let docIcon = NSImageView(frame: NSRect(x: 10, y: (containerH - 16) / 2, width: 16, height: 16))
+            let docConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
+            docIcon.image = NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)?.withSymbolConfiguration(docConfig)
+            docIcon.contentTintColor = Self.primaryText
+            selectedContainer.addSubview(docIcon)
+            
+            let truncatedText = selectedText.count > 30 ? String(selectedText.prefix(30)) + "..." : selectedText
+            let selectedLabel = makeLabel("Selected text: \(truncatedText)", size: 12, weight: .regular, color: Self.primaryText)
+            selectedLabel.frame = NSRect(x: 30, y: (containerH - 14) / 2, width: containerW - 60, height: 14)
+            selectedContainer.addSubview(selectedLabel)
+            
+            let closeBtnChat = NSButton(frame: NSRect(
+                x: containerW - 10 - 16,
+                y: (containerH - 16) / 2,
+                width: 16,
+                height: 16
+            ))
+            let closeChatConfig = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
+            closeBtnChat.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Clear selected text")?
+                .withSymbolConfiguration(closeChatConfig)
+            closeBtnChat.isBordered = false
+            closeBtnChat.bezelStyle = .inline
+            closeBtnChat.contentTintColor = Self.secondaryText
+            closeBtnChat.target = self
+            closeBtnChat.action = #selector(clearSelectedTextTapped)
+            selectedContainer.addSubview(closeBtnChat)
+            
+            yPos -= 12
+        }
+        
+        if !lastAction.isEmpty {
+            let pillWidth = estimatePillWidth(lastAction)
+            let pillH: CGFloat = 40
+            let pillX = width - padding - pillWidth
+            yPos -= pillH
+            
+            let pillBG = NSView(frame: NSRect(x: pillX, y: yPos, width: pillWidth, height: pillH))
+            pillBG.wantsLayer = true
+            pillBG.layer?.backgroundColor = Self.actionPillBG.cgColor
+            pillBG.layer?.cornerRadius = pillH / 2
+            contentView.addSubview(pillBG)
+            
+            let pillLabel = makeLabel(lastAction, size: Self.messageFontSize, weight: .regular, color: Self.primaryText)
+            pillLabel.frame = NSRect(x: Self.userBubblePaddingH, y: (pillH - 16) / 2, width: pillWidth - Self.userBubblePaddingH * 2, height: 16)
+            pillBG.addSubview(pillLabel)
+            
+            yPos -= Self.messageSpacing
+        }
+        
+        for (index, msgData) in messageHeights.enumerated() {
+            let message = conversationMessages[index]
+            
+            if msgData.role == .assistant {
+                let availableWidth = width - padding * 2
+                let textHeight = msgData.textHeight
+                
+                yPos -= textHeight
+                
+                let responseLabel = NSTextField(wrappingLabelWithString: message.content)
+                responseLabel.font = .systemFont(ofSize: Self.messageFontSize)
+                responseLabel.textColor = Self.primaryText
+                responseLabel.isBezeled = false
+                responseLabel.drawsBackground = false
+                responseLabel.isEditable = false
+                responseLabel.isSelectable = true
+                responseLabel.frame = NSRect(x: padding, y: yPos, width: availableWidth, height: textHeight)
+                contentView.addSubview(responseLabel)
+                
+                yPos -= 8
+                
+                yPos -= btnSize
+                var btnX: CGFloat = padding
+                
+                let copyBtn = makeSmallIconButton(symbolName: "doc.on.doc", action: #selector(copyTapped))
+                copyBtn.frame = NSRect(x: btnX, y: yPos, width: btnSize, height: btnSize)
+                contentView.addSubview(copyBtn)
+                btnX += btnSize + btnSpacing
+                
+                let refreshBtn = makeSmallIconButton(symbolName: "arrow.clockwise", action: #selector(regenerateTapped))
+                refreshBtn.frame = NSRect(x: btnX, y: yPos, width: btnSize, height: btnSize)
+                contentView.addSubview(refreshBtn)
+                btnX += btnSize + btnSpacing
+                
+                let likeBtn = makeSmallIconButton(symbolName: "hand.thumbsup", action: #selector(likeTapped))
+                likeBtn.frame = NSRect(x: btnX, y: yPos, width: btnSize, height: btnSize)
+                contentView.addSubview(likeBtn)
+                btnX += btnSize + btnSpacing
+                
+                let dislikeBtn = makeSmallIconButton(symbolName: "hand.thumbsdown", action: #selector(dislikeTapped))
+                dislikeBtn.frame = NSRect(x: btnX, y: yPos, width: btnSize, height: btnSize)
+                contentView.addSubview(dislikeBtn)
+                
+                yPos -= Self.messageSpacing
+                
+            } else if msgData.role == .user {
+                let textHeight = msgData.textHeight
+                let bubbleW = msgData.bubbleW
+                let bubbleH = textHeight + Self.userBubblePaddingV * 2
+                let bubbleX = width - padding - bubbleW
+                
+                yPos -= bubbleH
+                
+                let bubbleBG = NSView(frame: NSRect(x: bubbleX, y: yPos, width: bubbleW, height: bubbleH))
+                bubbleBG.wantsLayer = true
+                bubbleBG.layer?.backgroundColor = Self.actionPillBG.cgColor
+                let isSingleLine = textHeight <= 22
+                bubbleBG.layer?.cornerRadius = isSingleLine ? bubbleH / 2 : 16
+                contentView.addSubview(bubbleBG)
+                
+                let labelWidth = bubbleW - Self.userBubblePaddingH * 2
+                let userLabel = NSTextField(wrappingLabelWithString: message.content)
+                userLabel.font = .systemFont(ofSize: Self.messageFontSize)
+                userLabel.textColor = Self.primaryText
+                userLabel.isBezeled = false
+                userLabel.drawsBackground = false
+                userLabel.isEditable = false
+                userLabel.isSelectable = true
+                userLabel.lineBreakMode = .byWordWrapping
+                userLabel.cell?.wraps = true
+                userLabel.cell?.isScrollable = false
+                let textY = (bubbleH - textHeight) / 2
+                userLabel.frame = NSRect(x: Self.userBubblePaddingH, y: textY, width: labelWidth, height: textHeight)
+                bubbleBG.addSubview(userLabel)
+                
+                yPos -= Self.messageSpacing
+            }
+        }
+        
+        if isLoadingInline {
+            let indicatorH: CGFloat = 24
+            yPos -= indicatorH
+            
+            let typingIndicator = TypingIndicatorView(color: Self.secondaryText)
+            typingIndicator.frame = NSRect(x: padding, y: yPos + 9, width: typingIndicator.frame.width, height: typingIndicator.frame.height)
+            typingIndicator.startAnimating()
+            contentView.addSubview(typingIndicator)
+        }
+    }
+    
+    private func rebuildChatContent() {
+        guard let scrollView = chatScrollView, let contentView = chatContentView else { return }
+        
+        contentView.subviews.forEach { $0.removeFromSuperview() }
+        
+        let width = scrollView.frame.width
+        let availableHeight = scrollView.frame.height
+        buildChatContentInView(contentView, width: width, availableHeight: availableHeight)
+        
+        scrollToBottom()
     }
     
     private func scrollToBottom() {
-        chatWebView?.scrollToBottom()
+        guard let scrollView = chatScrollView else { return }
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: 0))
+    }
+    
+    private func estimatePillWidth(_ text: String) -> CGFloat {
+        let attr = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: Self.messageFontSize, weight: .medium)])
+        let rect = attr.boundingRect(with: NSSize(width: CGFloat.greatestFiniteMagnitude, height: 24), options: [.usesLineFragmentOrigin])
+        return ceil(rect.width) + Self.userBubblePaddingH * 2 + 8
+    }
+    
+    private func estimateTextWidth(_ text: String, fontSize: CGFloat) -> CGFloat {
+        let attr = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: fontSize)])
+        let rect = attr.boundingRect(with: NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude), options: [.usesLineFragmentOrigin])
+        return ceil(rect.width)
     }
 
     // MARK: - Compliance Panel State
@@ -1555,14 +1668,12 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         let height = size.height
         let padding: CGFloat = 16
         
-        // Card background
         let cardLayer = CALayer()
         cardLayer.frame = CGRect(origin: .zero, size: size)
         cardLayer.backgroundColor = Self.cardBG.cgColor
         cardLayer.cornerRadius = Self.cardCornerRadius
         containerView.layer?.addSublayer(cardLayer)
         
-        // Header
         let logoSize: CGFloat = 28
         let headerY = height - 12 - logoSize
         
@@ -1578,7 +1689,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         closeBtn.frame = NSRect(x: width - 16 - padding, y: headerY + (logoSize - 16) / 2, width: 16, height: 16)
         containerView.addSubview(closeBtn)
         
-        // Get validation result
         guard let result = currentValidationResult else {
             let noDataLabel = makeLabel("no validation data", size: 13, weight: .regular, color: Self.secondaryText)
             noDataLabel.frame = NSRect(x: padding, y: height / 2, width: width - padding * 2, height: 20)
@@ -1587,12 +1697,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             return
         }
         
-        // Score section
         let scoreY = headerY - 100
         let scoreSize: CGFloat = 60
         let scoreX = (width - scoreSize) / 2
         
-        // Score circle
         let scoreCircle = NSView(frame: NSRect(x: scoreX, y: scoreY + 30, width: scoreSize, height: scoreSize))
         scoreCircle.wantsLayer = true
         scoreCircle.layer?.cornerRadius = scoreSize / 2
@@ -1604,7 +1712,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         scoreLabel.frame = NSRect(x: 0, y: (scoreSize - 26) / 2, width: scoreSize, height: 26)
         scoreCircle.addSubview(scoreLabel)
         
-        // Status text
         let statusText = result.passed ? "passed" : "needs attention"
         let statusColor = result.passed ? NSColor(red: 0.2, green: 0.78, blue: 0.35, alpha: 1) : NSColor(red: 1.0, green: 0.8, blue: 0.2, alpha: 1)
         let statusLabel = makeLabel(statusText, size: 13, weight: .medium, color: statusColor)
@@ -1612,7 +1719,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         statusLabel.frame = NSRect(x: padding, y: scoreY + 6, width: width - padding * 2, height: 18)
         containerView.addSubview(statusLabel)
         
-        // Violations section
         let violationsY = scoreY - 16
         let violationsSectionHeight: CGFloat = 160
         
@@ -1644,7 +1750,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             containerView.addSubview(noIssuesLabel)
         }
         
-        // Summary row at bottom
         let summaryY: CGFloat = 56
         let summaryHeight: CGFloat = 36
         
@@ -1708,9 +1813,9 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     }
     
     private func colorForScore(_ score: Int) -> NSColor {
-        if score >= 90 { return NSColor(red: 0.2, green: 0.78, blue: 0.35, alpha: 1) }  // Green
-        if score >= 70 { return NSColor(red: 1.0, green: 0.8, blue: 0.2, alpha: 1) }    // Yellow
-        return NSColor(red: 1.0, green: 0.4, blue: 0.3, alpha: 1)                        // Red
+        if score >= 90 { return NSColor(red: 0.2, green: 0.78, blue: 0.35, alpha: 1) }
+        if score >= 70 { return NSColor(red: 1.0, green: 0.8, blue: 0.2, alpha: 1) }
+        return NSColor(red: 1.0, green: 0.4, blue: 0.3, alpha: 1)
     }
     
     // MARK: - Error State
@@ -1756,7 +1861,8 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         containerView.subviews.forEach { $0.removeFromSuperview() }
         containerView.layer?.sublayers?.forEach { $0.removeFromSuperlayer() }
         inputField = nil
-        chatWebView = nil
+        chatScrollView = nil
+        chatContentView = nil
         inlineSpinner = nil
     }
 
@@ -1782,7 +1888,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             }
         }
         
-        // Apple-style spring animation for smooth transitions
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.35
             ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.0)
@@ -1825,6 +1930,24 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         btn.imageScaling = .scaleProportionallyDown
         return btn
     }
+    
+    private func makeSmallIconButton(symbolName: String, action: Selector) -> HoverButton {
+        let btn = HoverButton(hoverColor: NSColor.white.withAlphaComponent(0.1), cornerRadius: 4)
+        let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
+        btn.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config)
+        btn.isBordered = false
+        btn.bezelStyle = .shadowlessSquare
+        btn.target = self
+        btn.action = action
+        btn.contentTintColor = NSColor(white: 0.5, alpha: 1)
+        btn.imageScaling = .scaleProportionallyDown
+        btn.toolTip = symbolName == "doc.on.doc" ? "Copy" :
+                      symbolName == "arrow.clockwise" ? "Regenerate" :
+                      symbolName == "hand.thumbsup" ? "Good response" :
+                      symbolName == "hand.thumbsdown" ? "Bad response" : nil
+        return btn
+    }
 
     private func makeTextButton(_ title: String, action: Selector) -> NSButton {
         let btn = NSButton(title: title, target: self, action: action)
@@ -1842,7 +1965,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
             guard let self, self.panel.isVisible else { return }
             switch self.currentState {
             case .chatWindow, .chatLoading, .error, .floatingFAB, .optionsMenu, .compliancePanel:
-                // Don't dismiss on outside click for these states
                 break
             case .miniIcon, .noSelection:
                 let mouseLoc = NSEvent.mouseLocation
@@ -1854,7 +1976,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
 
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
-            if event.keyCode == 53 { // Escape key
+            if event.keyCode == 53 {
                 self.hide()
                 self.onCancel?()
                 return nil
@@ -1872,7 +1994,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         if commandSelector == #selector(NSResponder.insertNewline(_:)) {
-            // Check which input field triggered this
             if control == quickActionsInputField {
                 submitQuickActionsInput()
             } else {
@@ -1934,28 +2055,28 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         var reportContent = ""
         
         if result.passed {
-            reportContent = "✓ Content passes compliance check with score \(result.score)/100\n\n"
+            reportContent = "Content passes compliance check with score \(result.score)/100\n\n"
         } else {
-            reportContent = "⚠ Content needs attention. Score: \(result.score)/100\n\n"
+            reportContent = "Content needs attention. Score: \(result.score)/100\n\n"
         }
         
         if result.errorCount > 0 {
-            reportContent += "**\(result.errorCount) errors** (must fix)\n"
+            reportContent += "\(result.errorCount) errors (must fix)\n"
         }
         if result.warningCount > 0 {
-            reportContent += "**\(result.warningCount) warnings** (should fix)\n"
+            reportContent += "\(result.warningCount) warnings (should fix)\n"
         }
         if result.infoCount > 0 {
-            reportContent += "**\(result.infoCount) suggestions**\n"
+            reportContent += "\(result.infoCount) suggestions\n"
         }
         
         if !result.violations.isEmpty {
-            reportContent += "\n**Issues found:**\n"
+            reportContent += "\nIssues found:\n"
             for (index, violation) in result.violations.prefix(5).enumerated() {
-                let icon = violation.severity == .error ? "❌" : (violation.severity == .warning ? "⚠️" : "ℹ️")
-                reportContent += "\(index + 1). \(icon) \(violation.category): \"\(violation.text)\"\n"
+                let icon = violation.severity == .error ? "X" : (violation.severity == .warning ? "!" : "i")
+                reportContent += "\(index + 1). [\(icon)] \(violation.category): \"\(violation.text)\"\n"
                 if !violation.suggestion.isEmpty {
-                    reportContent += "   → \(violation.suggestion)\n"
+                    reportContent += "   -> \(violation.suggestion)\n"
                 }
             }
             if result.violations.count > 5 {
@@ -1964,7 +2085,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         }
         
         if result.autoFixableCount > 0 {
-            reportContent += "\n💡 **\(result.autoFixableCount) issues can be auto-fixed**"
+            reportContent += "\n\(result.autoFixableCount) issues can be auto-fixed"
         }
         
         let responseMessage = ChatMessage(
@@ -2026,11 +2147,9 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         
         if text.isEmpty {
-            // Empty input = just transition to chat with focus on input
             updateUI(.chatWindow)
             focusInputField()
         } else {
-            // User typed something - submit as custom prompt
             field.stringValue = ""
             lastAction = text
             onCustomPrompt?(text)
@@ -2045,40 +2164,38 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         }
     }
     
+    @objc private func copyTapped() {
+        onCopy?(lastResponse)
+    }
+    
     @objc private func cancelTapped() {
         hide()
         onCancel?()
     }
     
     @objc private func fabTapped() {
-        // Restore chat window from FAB
         if !isFabHovered {
             restoreChatFromFAB()
         }
     }
     
     @objc private func fabCloseTapped() {
-        // Fully close and clear conversation
         hide()
         onCancel?()
     }
     
     private func restoreChatFromFAB() {
-        // Restore chat window anchored to current FAB position with iOS-style spring animation
         let height = calculateChatWindowHeight()
         let size = NSSize(width: Self.chatWindowWidth, height: height)
         
-        // ALWAYS use current FAB position as anchor (not old chat window position)
-        // This ensures the chat opens near where the FAB currently is after dragging
         let fabFrame = panel.frame
         var targetFrame = NSRect(
             x: fabFrame.minX,
-            y: fabFrame.maxY - size.height,  // Align top of chat with top of FAB
+            y: fabFrame.maxY - size.height,
             width: size.width,
             height: size.height
         )
         
-        // Ensure on screen
         if let screen = NSScreen.screens.first(where: { $0.frame.intersects(targetFrame) }) ?? NSScreen.main {
             let visibleFrame = screen.visibleFrame
             if targetFrame.minX < visibleFrame.minX + Self.screenEdgePadding {
@@ -2100,7 +2217,6 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         currentState = .chatWindow
         panel.isMovableByWindowBackground = true
         
-        // iOS-style spring animation (quick expand)
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.3
             ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.3, 1.0)
@@ -2150,35 +2266,17 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         enableInput()
         focusInputField()
     }
-}
-
-// MARK: - ChatWebViewDelegate
-
-extension TooltipWindow: ChatWebViewDelegate {
-    func chatWebView(_ view: ChatWebView, didClickAction action: String, forMessageAt index: Int) {
-        switch action {
-        case "copy":
-            if index < conversationMessages.count {
-                let content = conversationMessages[index].content
-                onCopy?(content)
-            } else {
-                onCopy?(lastResponse)
-            }
-        case "regenerate":
-            onRegenerate?()
-        case "like":
-            onFeedback?("thumbs_up", lastResponse)
-        case "dislike":
-            onFeedback?("thumbs_down", lastResponse)
-        default:
-            break
-        }
+    
+    @objc private func regenerateTapped() {
+        onRegenerate?()
     }
     
-    func chatWebViewDidClickClearSelectedText(_ view: ChatWebView) {
-        selectedText = ""
-        onClearSelectedText?()
-        rebuildChatContent()
+    @objc private func likeTapped() {
+        onFeedback?("thumbs_up", lastResponse)
+    }
+    
+    @objc private func dislikeTapped() {
+        onFeedback?("thumbs_down", lastResponse)
     }
 }
 

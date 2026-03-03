@@ -477,7 +477,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
     
     // Typography constants
     private static let messageFontSize: CGFloat = 14
-    private static let titleFontSize: CGFloat = 15
+    private static let titleFontSize: CGFloat = 14
     private static let inputFontSize: CGFloat = 14
     
     // Spacing constants
@@ -1128,7 +1128,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         let headerY = height - headerHeight
         let logoSize: CGFloat = 28
         let titleText = "Conversation Studio"
-        let titleWidth: CGFloat = 90
+        let titleWidth: CGFloat = 140
         let logoTitleSpacing: CGFloat = 8
         
         let logoY = headerY + (headerHeight - logoSize) / 2
@@ -1136,7 +1136,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         avatar.frame = NSRect(x: padding + 2, y: logoY, width: logoSize, height: logoSize)
         containerView.addSubview(avatar)
         
-        let titleLabel = makeLabel(titleText, size: 14, weight: .medium, color: Self.titleText)
+        let titleLabel = makeLabel(titleText, size: 13, weight: .medium, color: Self.titleText)
         titleLabel.frame = NSRect(x: padding + 2 + logoSize + logoTitleSpacing, y: headerY + (headerHeight - 18) / 2, width: titleWidth, height: 18)
         containerView.addSubview(titleLabel)
         
@@ -1319,7 +1319,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         let headerY = height - headerHeight
         let logoSize: CGFloat = 28
         let titleText = "Conversation Studio"
-        let titleWidth: CGFloat = 100
+        let titleWidth: CGFloat = 150
         let logoTitleSpacing: CGFloat = 10
         
         let logoY = headerY + (headerHeight - logoSize) / 2
@@ -1913,7 +1913,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         field.drawsBackground = false
         field.isEditable = false
         field.isSelectable = false
-        field.lineBreakMode = .byTruncatingTail
+        field.lineBreakMode = .byClipping
         return field
     }
 
@@ -1994,6 +1994,10 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+            // Check if Shift is held - if so, allow newline insertion
+            if NSEvent.modifierFlags.contains(.shift) {
+                return false
+            }
             if control == quickActionsInputField {
                 submitQuickActionsInput()
             } else {

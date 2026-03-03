@@ -7,7 +7,7 @@ struct ToneStudioApp: App {
     @State private var isMenuPresented = false
 
     var body: some Scene {
-        MenuBarExtra("Tone Studio", image: "StatusBarIcon") {
+        MenuBarExtra("Conversation Studio", image: "StatusBarIcon") {
             MenuBarView(
                 onRestartMonitoring: {
                     appDelegate.restartMonitoring()
@@ -20,7 +20,7 @@ struct ToneStudioApp: App {
         }
         .menuBarExtraStyle(.window)
         .menuBarExtraAccess(isPresented: $isMenuPresented) { statusItem in
-            statusItem.button?.toolTip = "Tone Studio - Rephrase selected text"
+            statusItem.button?.toolTip = "Conversation Studio - Rephrase selected text"
         }
     }
 }

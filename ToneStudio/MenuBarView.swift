@@ -59,7 +59,7 @@ struct MenuBarView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: iconContainerWidth, height: iconSize)
-                Text("Open Tone Studio")
+                Text("Open Conversation Studio")
                     .font(.system(size: iconSize))
                 Spacer()
                 Text("⌘⇧J")
@@ -160,7 +160,7 @@ struct MenuBarView: View {
                     Image(systemName: "power")
                         .font(.system(size: iconSize))
                         .frame(width: iconContainerWidth, alignment: .center)
-                    Text("Quit Tone Studio")
+                    Text("Quit Conversation Studio")
                         .font(.system(size: iconSize))
                 }
             }

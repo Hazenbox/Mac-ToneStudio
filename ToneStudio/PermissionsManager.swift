@@ -97,7 +97,7 @@ final class PermissionsManager: ObservableObject {
     func showManualInstructions() {
         let alert = NSAlert()
         alert.messageText = "Accessibility Permission Required"
-        alert.informativeText = "Tone Studio needs accessibility access to detect selected text and replace it inline.\n\nPlease enable it in:\nSystem Settings → Privacy & Security → Accessibility"
+        alert.informativeText = "Conversation Studio needs accessibility access to detect selected text and replace it inline.\n\nPlease enable it in:\nSystem Settings → Privacy & Security → Accessibility"
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Open System Settings")
         alert.addButton(withTitle: "Quit")

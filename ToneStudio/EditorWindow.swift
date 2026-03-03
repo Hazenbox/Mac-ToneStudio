@@ -94,7 +94,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     // MARK: - Window Setup
     
     private func setupWindow() {
-        window.title = "Tone Studio"
+        window.title = "Conversation Studio"
         window.isOpaque = true
         window.backgroundColor = NSColor.windowBackgroundColor
         window.hasShadow = true

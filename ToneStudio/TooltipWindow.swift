@@ -1127,7 +1127,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         let headerHeight: CGFloat = 44
         let headerY = height - headerHeight
         let logoSize: CGFloat = 28
-        let titleText = "Tone Studio"
+        let titleText = "Conversation Studio"
         let titleWidth: CGFloat = 90
         let logoTitleSpacing: CGFloat = 8
         
@@ -1318,7 +1318,7 @@ final class TooltipWindow: NSObject, NSTextFieldDelegate {
         let headerHeight: CGFloat = 44
         let headerY = height - headerHeight
         let logoSize: CGFloat = 28
-        let titleText = "Tone Studio"
+        let titleText = "Conversation Studio"
         let titleWidth: CGFloat = 100
         let logoTitleSpacing: CGFloat = 10
         
